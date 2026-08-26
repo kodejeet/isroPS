@@ -1,0 +1,27 @@
+# AUTO-GENERATED LOCKFILE FROM PIP FREEZE - DO NOT HAND-EDIT
+
+black==26.5.1
+click==8.5.0
+ImageIO==2.37.4
+iniconfig==2.3.0
+lazy-loader==0.5
+mypy_extensions==1.1.0
+networkx==3.6.1
+numpy==2.5.2
+opencv-python==5.0.0.93
+packaging==26.3
+pandas==3.0.5
+pathspec==1.1.1
+pillow==12.3.0
+platformdirs==4.11.4
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+pytokens==0.4.1
+PyYAML==6.0.3
+ruff==0.16.4
+scikit-image==0.26.0
+scipy==1.18.1
+six==1.17.0
+tifffile==2026.8.23

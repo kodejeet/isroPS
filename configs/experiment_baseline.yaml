@@ -1,0 +1,17 @@
+# Baseline experiment overrides (deep-merges over default.yaml)
+pipeline:
+  name: "experiment_sift_baseline"
+  random_seed: 42
+
+feature_extraction:
+  sift:
+    nfeatures: 3000
+    contrastThreshold: 0.03
+
+matching:
+  descriptor:
+    ratio_test_threshold: 0.70
+
+geometry:
+  ransac:
+    reproj_threshold: 2.5

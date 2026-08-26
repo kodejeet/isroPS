@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunar-correspondence"
+version = "0.1.0"
+description = "Multi-modal, Sun angle and scale invariant image correspondence for Chandrayaan-2 and Lunar reference imagery."
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = { text = "MIT" }
+authors = [
+    { name = "SIH 2026 Team" }
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "opencv-python>=4.7.0",
+    "scikit-image>=0.20.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "pyyaml>=6.0",
+    "pillow>=9.5.0",
+    "tifffile>=2023.3.15"
+]
+
+[project.optional-dependencies]
+geo = [
+    "rasterio",
+    "shapely"
+]
+learned = [
+    "torch",
+    "lightglue"
+]
+dev = [
+    "pytest>=7.0.0",
+    "black",
+    "ruff"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

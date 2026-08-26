@@ -1,0 +1,41 @@
+# Default pipeline configuration
+pipeline:
+  name: "sift_baseline"
+  random_seed: 42
+  device: "cpu"
+
+feature_extraction:
+  method: "sift"  # Options: sift, rift (stub), lightglue (stub)
+  sift:
+    nfeatures: 2000
+    nOctaveLayers: 3
+    contrastThreshold: 0.04
+    edgeThreshold: 10
+    sigma: 1.6
+
+matching:
+  method: "descriptor"  # Options: descriptor, rift (stub), lightglue (stub)
+  descriptor:
+    norm_type: "L2"
+    cross_check: false
+    ratio_test_threshold: 0.75  # Lowe's ratio test threshold
+
+geometry:
+  model_type: "homography"  # Options: homography, affine
+  ransac:
+    reproj_threshold: 3.0  # Max allowable reprojection error in pixels
+    max_iters: 2000
+    confidence: 0.99
+  subpixel_refinement:
+    enabled: false
+    win_size: 5
+    zero_zone: -1
+
+evaluation:
+  grid_rows: 4
+  grid_cols: 4
+
+output:
+  save_visualizations: true
+  save_metrics_json: true
+  output_dir: "./outputs"

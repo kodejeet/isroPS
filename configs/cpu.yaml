@@ -1,0 +1,8 @@
+# CPU optimization overrides (deep-merges over default.yaml)
+pipeline:
+  device: "cpu"
+  num_threads: 4
+
+feature_extraction:
+  sift:
+    nfeatures: 1500

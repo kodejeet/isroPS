@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Data directory contents (keep directories via .gitkeep)
+data/raw/*
+!data/raw/.gitkeep
+data/calibrated/*
+!data/calibrated/.gitkeep
+data/reference/*
+!data/reference/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Saved artifacts & outputs
+outputs/
+runs/
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Environment secrets
+.env
