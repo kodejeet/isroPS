@@ -11,7 +11,7 @@ from lunar_correspondence.io import (
     RegistrationResult,
     load_image,
 )
-from lunar_correspondence.pipeline import RegistrationPipeline
+from lunar_correspondence.pipeline import RegistrationPipeline, run_registration
 
 __version__ = "0.1.0"
 
@@ -27,4 +27,5 @@ __all__ = [
     "deep_merge",
     "load_config",
     "load_image",
+    "run_registration",
 ]

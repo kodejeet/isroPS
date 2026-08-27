@@ -7,6 +7,7 @@ executes the SIFT baseline pipeline, computes metrics, and outputs visualization
 import argparse
 import os
 import sys
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -19,7 +20,7 @@ sys.path.insert(
 from lunar_correspondence.config import load_config
 from lunar_correspondence.io.metadata import ImageData, ImageMetadata
 from lunar_correspondence.io.writers import save_metrics_json, save_registered_image
-from lunar_correspondence.pipeline import RegistrationPipeline
+from lunar_correspondence.pipeline import run_registration
 from lunar_correspondence.visualization.matches import draw_match_lines
 from lunar_correspondence.visualization.registration import plot_registration_overlay
 
@@ -142,18 +143,21 @@ def main():
     src_data = ImageData(array=src_array, path=src_path, metadata=src_meta)
     ref_data = ImageData(array=ref_array, path=ref_path, metadata=ref_meta)
 
-    # Instantiate and execute pipeline
-    pipeline = RegistrationPipeline(config)
-    print("[*] Executing registration pipeline...")
-    reg_result, eval_result = pipeline.run(src_data, ref_data)
+    # Execute pipeline via single orchestration function
+    print("[*] Executing registration pipeline via run_registration()...")
+    reg_result, eval_result = run_registration(src_data, ref_data, config)
 
-    # Save output artifacts
-    os.makedirs(args.output_dir, exist_ok=True)
+    # Per-run timestamped output directory to prevent collision
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    src_stem = os.path.splitext(os.path.basename(src_path))[0]
+    ref_stem = os.path.splitext(os.path.basename(ref_path))[0]
+    run_output_dir = os.path.join(args.output_dir, f"{timestamp}_{src_stem}_{ref_stem}")
+    os.makedirs(run_output_dir, exist_ok=True)
 
-    reg_out_path = os.path.join(args.output_dir, "registered_output.png")
-    matches_viz_path = os.path.join(args.output_dir, "match_visualization.png")
-    overlay_viz_path = os.path.join(args.output_dir, "registration_overlay.png")
-    metrics_json_path = os.path.join(args.output_dir, "metrics.json")
+    reg_out_path = os.path.join(run_output_dir, "registered_output.png")
+    matches_viz_path = os.path.join(run_output_dir, "match_visualization.png")
+    overlay_viz_path = os.path.join(run_output_dir, "registration_overlay.png")
+    metrics_json_path = os.path.join(run_output_dir, "metrics.json")
 
     save_registered_image(reg_result, reg_out_path)
     draw_match_lines(
@@ -182,9 +186,10 @@ def main():
         else " Median Error: N/A"
     )
     print(f" Grid Coverage (%):       {eval_result.coverage:.2f}%")
+    print(f" Scale Factor:            {eval_result.scale_factor}")
     print(f" Processing Time:         {eval_result.processing_time_seconds:.3f} s")
     print("----------------------------------------------------------")
-    print(f"[*] Results saved to directory: {os.path.abspath(args.output_dir)}")
+    print(f"[*] Results saved to directory: {os.path.abspath(run_output_dir)}")
     print("Done.")
 
 

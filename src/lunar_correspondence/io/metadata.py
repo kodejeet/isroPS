@@ -125,3 +125,4 @@ class EvaluationResult:
     spatial_uniformity: float | None
     processing_time_seconds: float
     random_seed: int
+    scale_factor: float = 1.0

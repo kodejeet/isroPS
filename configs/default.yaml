@@ -35,6 +35,9 @@ evaluation:
   grid_rows: 4
   grid_cols: 4
 
+processing:
+  max_dimension: 4096
+
 output:
   save_visualizations: true
   save_metrics_json: true

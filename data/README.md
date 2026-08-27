@@ -2,6 +2,11 @@
 
 This directory structure separates data products according to their processing level and source.
 
+## ⚠️ Data Hygiene Rule
+**Do NOT commit real mission data to git.** Real lunar orbital products are large binary files. Keep all real downloaded rasters in `data/raw/`, `data/calibrated/`, or `data/reference/` (which are strictly ignored by `.gitignore`). Only `data/examples/` contains small synthetic assets.
+
+---
+
 ## Directory Overview
 
 - `data/raw/`: Store raw, uncalibrated instrument products downloaded from archives (e.g. raw `.IMG` or `.xml` PDS4 products). *Gitignored.*
@@ -9,6 +14,8 @@ This directory structure separates data products according to their processing l
 - `data/reference/`: Store reference lunar datasets such as NASA LROC NAC optical images or JAXA SELENE (Kaguya) images. *Gitignored.*
 - `data/processed/`: Intermediate output, tiles, sub-sampled patches, or orthorectified outputs created by the pipeline. *Gitignored.*
 - `data/examples/`: Small, synthetic demonstration image pairs used for testing and baseline execution without external data dependencies. **Committed to repository.**
+
+---
 
 ## Acquiring Real Lunar Imagery
 
@@ -24,5 +31,11 @@ This directory structure separates data products according to their processing l
 - **LROC Downloads:** [LROC Downloads Portal](https://lroc.im-ldi.com/images/downloads/)
   - *Note:* LROC web services migrated from `asu.edu` to `im-ldi.com`.
 
-### 3. JAXA SELENE (Kaguya)
-- Reference imagery can also be downloaded from the DARTS JAXA portal for cross-mission multimodal matching.
+### 3. Converting PDS4 Products (`.xml` + `.img`) to GeoTIFF
+Real Chandrayaan-2 downloads from PRADAN come as PDS4 label (`.xml`) + binary raster (`.img` / `.qub`) pairs. Convert them to GeoTIFF using GDAL before uploading to the prototype:
+
+```bash
+# Convert a PRADAN PDS4 product (label + binary) to GeoTIFF
+gdal_translate CH2_OHR_NCB_20200101T000000000_d_img.xml output_ohrc.tif
+```
+*(Requires GDAL built with the PDS4 driver. Verify driver support with: `gdalinfo --formats | grep -i pds4`)*

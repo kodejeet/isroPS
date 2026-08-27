@@ -135,3 +135,50 @@ class RegistrationPipeline:
         )
 
         return reg_result, eval_result
+
+
+def run_registration(
+    source: ImageData,
+    reference: ImageData,
+    config: dict[str, Any],
+) -> tuple[RegistrationResult, EvaluationResult]:
+    """Single entry point function for registering two ImageData objects.
+
+    All callers (run_baseline.py, scripts/register.py, app.py) MUST call this function.
+    Handles optional downsampling for large images if processing.max_dimension is set in config.
+    """
+    max_dim = config.get("processing", {}).get("max_dimension", None)
+
+    source_to_process = source
+    ref_to_process = reference
+    scale_factor = 1.0
+
+    if max_dim is not None:
+        max_src = max(source.height, source.width)
+        max_ref = max(reference.height, reference.width)
+        max_sz = max(max_src, max_ref)
+        if max_sz > max_dim:
+            scale_factor = float(max_dim) / float(max_sz)
+            new_src_w = int(round(source.width * scale_factor))
+            new_src_h = int(round(source.height * scale_factor))
+            new_ref_w = int(round(reference.width * scale_factor))
+            new_ref_h = int(round(reference.height * scale_factor))
+
+            src_arr_ds = cv2.resize(source.array, (new_src_w, new_src_h))
+            if src_arr_ds.ndim == 2:
+                src_arr_ds = src_arr_ds[:, :, np.newaxis]
+            ref_arr_ds = cv2.resize(reference.array, (new_ref_w, new_ref_h))
+            if ref_arr_ds.ndim == 2:
+                ref_arr_ds = ref_arr_ds[:, :, np.newaxis]
+
+            source_to_process = ImageData(
+                array=src_arr_ds, path=source.path, metadata=source.metadata
+            )
+            ref_to_process = ImageData(
+                array=ref_arr_ds, path=reference.path, metadata=reference.metadata
+            )
+
+    pipeline = RegistrationPipeline(config)
+    reg_result, eval_result = pipeline.run(source_to_process, ref_to_process)
+    eval_result.scale_factor = scale_factor
+    return reg_result, eval_result
