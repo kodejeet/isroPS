@@ -177,12 +177,12 @@ def main():
     print(f" Inlier Ratio:            {eval_result.inlier_ratio:.4f}")
     print(
         f" RMSE (pixels):           {eval_result.rmse_pixels:.4f}"
-        if eval_result.rmse_pixels
+        if eval_result.rmse_pixels is not None
         else " RMSE: N/A"
     )
     print(
         f" Median Error (pixels):   {eval_result.median_error_pixels:.4f}"
-        if eval_result.median_error_pixels
+        if eval_result.median_error_pixels is not None
         else " Median Error: N/A"
     )
     print(f" Grid Coverage (%):       {eval_result.coverage:.2f}%")

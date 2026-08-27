@@ -16,9 +16,9 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from app.components.plots import render_visualizations
-from app.components.results import render_download_buttons, render_metrics_scorecard
-from app.components.upload import get_display_preview, load_uploaded_image
+from components.plots import render_visualizations
+from components.results import render_download_buttons, render_metrics_scorecard
+from components.upload import get_display_preview, load_uploaded_image
 from lunar_correspondence.config import load_config
 from lunar_correspondence.pipeline import run_registration
 
