@@ -57,12 +57,20 @@ def load_image(
                 array = src.read()  # (C, H, W)
                 array = np.moveaxis(array, 0, -1)  # reshape to (H, W, C)
         except ImportError:
-            # Fallback to OpenCV / tifffile loading
+            # Rasterio not installed — fallback to OpenCV / tifffile loading
             img_cv = cv2.imread(path, cv2.IMREAD_UNCHANGED)
             if img_cv is not None:
                 array = img_cv
-        except Exception:
-            pass
+        except Exception as exc:
+            import warnings
+
+            warnings.warn(
+                f"Rasterio failed to read '{path}': {exc}. "
+                f"Falling back to OpenCV/tifffile.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            array = None  # ensure OpenCV fallback is attempted
 
     if array is None:
         # OpenCV standard read (returns BGR or Grayscale)
