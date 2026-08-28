@@ -36,13 +36,13 @@ def test_load_grayscale_image_shape(tmp_path):
 
 
 def test_pds4_stub_raises_error(tmp_path):
-    pds4_path = str(tmp_path / "test_product.xml")
-    with open(pds4_path, "w") as f:
-        f.write("<Product_Observational></Product_Observational>")
+    for ext in [".xml", ".lbl", ".img", ".qub"]:
+        pds4_path = str(tmp_path / f"test_product{ext}")
+        with open(pds4_path, "w") as f:
+            f.write("DUMMY PDS4 CONTENT")
 
-    with pytest.raises(NotImplementedError) as exc_info:
-        load_image(pds4_path)
+        with pytest.raises(NotImplementedError) as exc_info:
+            load_image(pds4_path)
 
-    assert "PDS4 planetary label reader is pending P1 implementation" in str(
-        exc_info.value
-    )
+        assert "Direct raw PDS4-style ingestion" in str(exc_info.value)
+        assert "GeoTIFF" in str(exc_info.value)

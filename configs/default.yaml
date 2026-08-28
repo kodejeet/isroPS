@@ -19,6 +19,11 @@ matching:
     norm_type: "L2"
     cross_check: false
     ratio_test_threshold: 0.75  # Lowe's ratio test threshold
+  spatial_selection:
+    enabled: true
+    grid_rows: 8
+    grid_cols: 8
+    top_k: 4
 
 geometry:
   model_type: "homography"  # Options: homography, affine

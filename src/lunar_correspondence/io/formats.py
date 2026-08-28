@@ -24,7 +24,7 @@ def detect_image_format(path: str) -> ImageFormat:
         return ImageFormat.STANDARD
     elif ext in [".tif", ".tiff"]:
         return ImageFormat.TIFF
-    elif ext in [".xml", ".img", ".lbl", ".dat"]:
+    elif ext in [".xml", ".img", ".lbl", ".dat", ".qub"]:
         return ImageFormat.PDS4
     else:
         return ImageFormat.UNKNOWN

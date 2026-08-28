@@ -127,7 +127,7 @@ def main():
 
     # Generate synthetic image pair
     print("[*] Generating synthetic lunar demo pair in ./data/examples/...")
-    src_path, ref_path, GT_H = generate_synthetic_lunar_pair(
+    src_path, ref_path, _gt_h = generate_synthetic_lunar_pair(
         "./data/examples", config["pipeline"]["random_seed"]
     )
     print(f"    - Source Image:    {src_path}")

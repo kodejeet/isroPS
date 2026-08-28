@@ -63,14 +63,16 @@ def estimate_geometric_model(
         )
         if matrix is None:
             H = np.eye(3, dtype=np.float32)
+            errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = np.zeros(len(pts_src), dtype=bool)
         else:
             # Convert 2x3 affine matrix to 3x3 homogeneous matrix
             H = np.vstack([matrix, [0.0, 0.0, 1.0]]).astype(np.float32)
+            errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = (
                 mask.ravel().astype(bool)
                 if mask is not None
-                else np.zeros(len(pts_src), dtype=bool)
+                else (errors <= reproj_threshold)
             )
     else:
         # Default Homography estimation
@@ -84,16 +86,16 @@ def estimate_geometric_model(
         )
         if H is None:
             H = np.eye(3, dtype=np.float32)
+            errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = np.zeros(len(pts_src), dtype=bool)
         else:
             H = H.astype(np.float32)
+            errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = (
                 mask.ravel().astype(bool)
                 if mask is not None
-                else np.zeros(len(pts_src), dtype=bool)
+                else (errors <= reproj_threshold)
             )
-
-    errors = compute_reprojection_errors(pts_src, pts_ref, H)
 
     return GeometricModel(
         transform_matrix=H,

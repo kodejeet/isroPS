@@ -6,6 +6,7 @@ Ensures returned ImageData.array always has shape (H, W, C) with C >= 1.
 """
 
 import os
+import warnings
 
 import cv2
 import numpy as np
@@ -42,8 +43,8 @@ def load_image(
 
     if fmt == ImageFormat.PDS4:
         raise NotImplementedError(
-            "PDS4 planetary label reader is pending P1 implementation. "
-            "For Day-1 baseline testing, please use calibrated PNG, JPEG, or TIFF products."
+            "Direct raw PDS4-style ingestion (.xml, .lbl, .img, .qub, .dat) is not supported in this prototype. "
+            "Please convert the planetary product to GeoTIFF using GDAL (e.g. gdal_translate <input.xml> <output.tif>) before processing."
         )
 
     # Attempt loading standard or TIFF raster
@@ -52,18 +53,19 @@ def load_image(
         # Check if geo extra rasterio is installed
         try:
             import rasterio
+            from rasterio.errors import NotGeoreferencedWarning
 
-            with rasterio.open(path) as src:
-                array = src.read()  # (C, H, W)
-                array = np.moveaxis(array, 0, -1)  # reshape to (H, W, C)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+                with rasterio.open(path) as src:
+                    array = src.read()  # (C, H, W)
+                    array = np.moveaxis(array, 0, -1)  # reshape to (H, W, C)
         except ImportError:
             # Rasterio not installed — fallback to OpenCV / tifffile loading
             img_cv = cv2.imread(path, cv2.IMREAD_UNCHANGED)
             if img_cv is not None:
                 array = img_cv
         except Exception as exc:
-            import warnings
-
             warnings.warn(
                 f"Rasterio failed to read '{path}': {exc}. "
                 f"Falling back to OpenCV/tifffile.",

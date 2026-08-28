@@ -59,3 +59,62 @@ def test_evaluate_registration_summary():
     assert eval_res.rmse_pixels is not None
     assert eval_res.rmse_pixels < 1.0
     assert eval_res.coverage > 0.0
+
+
+def test_evaluate_registration_self_match():
+    """Self-match (identical coordinates) must yield RMSE ≈ 0.0, Median ≈ 0.0 (not None)."""
+    pts_src = np.array(
+        [[10, 10], [20, 20], [30, 30], [40, 40], [50, 50]], dtype=np.float32
+    )
+    pts_ref = pts_src.copy()
+    inliers = np.ones(5, dtype=bool)
+    errors = np.zeros(5, dtype=np.float32)
+
+    match_set = MatchSet(
+        source_points=pts_src, reference_points=pts_ref, inlier_mask=inliers
+    )
+    geo_model = GeometricModel(
+        transform_matrix=np.eye(3),
+        model_type="homography",
+        inlier_mask=inliers,
+        reprojection_errors=errors,
+    )
+
+    eval_res = evaluate_registration(match_set, geo_model, reference_shape=(100, 100))
+
+    assert eval_res.total_matches == 5
+    assert eval_res.inlier_matches == 5
+    assert eval_res.inlier_ratio == 1.0
+    assert eval_res.rmse_pixels is not None
+    assert eval_res.median_error_pixels is not None
+    np.testing.assert_allclose(eval_res.rmse_pixels, 0.0, atol=1e-6)
+    np.testing.assert_allclose(eval_res.median_error_pixels, 0.0, atol=1e-6)
+
+
+def test_evaluate_registration_with_refinement_fields():
+    """Verify pre_refinement_rmse_pixels and post_refinement_rmse_pixels are populated."""
+    pts_src = np.array([[10, 10], [20, 20], [30, 30], [40, 40]], dtype=np.float32)
+    pts_ref = pts_src.copy()
+    inliers = np.array([True, True, True, True])
+    errors = np.array([0.5, 0.5, 0.5, 0.5], dtype=np.float32)
+
+    match_set = MatchSet(
+        source_points=pts_src, reference_points=pts_ref, inlier_mask=inliers
+    )
+    geo_model = GeometricModel(
+        transform_matrix=np.eye(3),
+        model_type="homography",
+        inlier_mask=inliers,
+        reprojection_errors=errors,
+    )
+
+    eval_res = evaluate_registration(
+        match_set,
+        geo_model,
+        reference_shape=(100, 100),
+        pre_refinement_rmse_pixels=0.55,
+        post_refinement_rmse_pixels=0.48,
+    )
+
+    assert eval_res.pre_refinement_rmse_pixels == 0.55
+    assert eval_res.post_refinement_rmse_pixels == 0.48

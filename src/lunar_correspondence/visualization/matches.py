@@ -64,8 +64,8 @@ def draw_match_lines(
         indices = np.arange(num_matches)
 
     for idx in indices:
-        x1, y1 = int(round(pts_src[idx][0])), int(round(pts_src[idx][1]))
-        x2, y2 = int(round(pts_ref[idx][0])) + w1, int(round(pts_ref[idx][1]))
+        x1, y1 = round(pts_src[idx][0]), round(pts_src[idx][1])
+        x2, y2 = round(pts_ref[idx][0]) + w1, round(pts_ref[idx][1])
 
         is_inlier = bool(inliers[idx])
         color = (
