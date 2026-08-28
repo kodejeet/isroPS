@@ -57,6 +57,8 @@ def evaluate_registration(
     grid_cols: int = 4,
     processing_time_seconds: float = 0.0,
     random_seed: int = 42,
+    pre_refinement_rmse_pixels: float | None = None,
+    post_refinement_rmse_pixels: float | None = None,
 ) -> EvaluationResult:
     """Evaluate registration quality and compute ISRO PS metric deliverables.
 
@@ -68,6 +70,8 @@ def evaluate_registration(
         grid_cols: Number of grid columns for coverage evaluation.
         processing_time_seconds: Elapsed execution time.
         random_seed: Random seed used during pipeline run.
+        pre_refinement_rmse_pixels: Pre-subpixel-refinement RMSE if refinement ran.
+        post_refinement_rmse_pixels: Post-subpixel-refinement RMSE if refinement ran.
 
     Returns:
         EvaluationResult populated with quantitative metrics.
@@ -103,6 +107,13 @@ def evaluate_registration(
 
     spatial_uniformity = coverage / 100.0  # Normalized 0..1 uniformity score
 
+    # Default pre-refinement RMSE to computed baseline rmse if not explicitly passed
+    pre_rmse = (
+        pre_refinement_rmse_pixels
+        if pre_refinement_rmse_pixels is not None
+        else rmse
+    )
+
     return EvaluationResult(
         total_matches=total_matches,
         inlier_matches=inlier_matches,
@@ -113,4 +124,6 @@ def evaluate_registration(
         spatial_uniformity=spatial_uniformity,
         processing_time_seconds=processing_time_seconds,
         random_seed=random_seed,
+        pre_refinement_rmse_pixels=pre_rmse,
+        post_refinement_rmse_pixels=post_refinement_rmse_pixels,
     )

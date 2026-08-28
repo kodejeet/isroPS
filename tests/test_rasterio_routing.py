@@ -67,9 +67,11 @@ class TestRasterioErrorHandling:
         mock_rasterio = MagicMock()
         mock_rasterio.open.side_effect = RuntimeError("Simulated rasterio failure")
 
-        with patch.dict("sys.modules", {"rasterio": mock_rasterio}):
-            with pytest.warns(RuntimeWarning, match="Rasterio failed to read"):
-                result = load_image(tiff_path)
+        with (
+            patch.dict("sys.modules", {"rasterio": mock_rasterio}),
+            pytest.warns(RuntimeWarning, match="Rasterio failed to read"),
+        ):
+            result = load_image(tiff_path)
 
         # Should still successfully load via OpenCV fallback
         assert isinstance(result, ImageData)
