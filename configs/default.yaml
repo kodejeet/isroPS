@@ -5,20 +5,37 @@ pipeline:
   device: "cpu"
 
 feature_extraction:
-  method: "sift"  # Options: sift, rift (stub), lightglue (stub)
+  method: "sift"  # Options: sift, rift, lightglue (stub)
   sift:
     nfeatures: 2000
     nOctaveLayers: 3
     contrastThreshold: 0.04
     edgeThreshold: 10
     sigma: 1.6
+  rift:
+    nscale: 4
+    norient: 6
+    npt: 5000
+    minWaveLength: 3
+    mult: 1.6
+    sigmaOnf: 0.75
+    g: 3
+    k: 1
+    patch_size: 96
+    no: 6
+    nbin: 6
+    is_ori: 1
+    ori_peak_ratio: 0.8
 
 matching:
-  method: "descriptor"  # Options: descriptor, rift (stub), lightglue (stub)
+  method: "descriptor"  # Options: descriptor, rift, lightglue (stub)
   descriptor:
     norm_type: "L2"
     cross_check: false
     ratio_test_threshold: 0.75  # Lowe's ratio test threshold
+  rift:
+    norm_type: "L2"
+    ratio_test_threshold: 0.90  # More permissive for MIM histograms
   spatial_selection:
     enabled: true
     grid_rows: 8
