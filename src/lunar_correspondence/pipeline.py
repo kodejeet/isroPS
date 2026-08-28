@@ -11,7 +11,9 @@ from lunar_correspondence.evaluation.metrics import evaluate_registration
 from lunar_correspondence.features.learned_features import LearnedFeatureExtractor
 from lunar_correspondence.features.rift_features import RIFTFeatureExtractor
 from lunar_correspondence.features.sift_features import SIFTFeatureExtractor
+from lunar_correspondence.geometry.homography import compute_reprojection_errors
 from lunar_correspondence.geometry.ransac import estimate_geometric_model
+from lunar_correspondence.geometry.refinement import refine_subpixel
 from lunar_correspondence.geometry.transforms import warp_image
 from lunar_correspondence.io.metadata import (
     EvaluationResult,
@@ -21,6 +23,7 @@ from lunar_correspondence.io.metadata import (
 from lunar_correspondence.matching.descriptor_matcher import DescriptorMatcher
 from lunar_correspondence.matching.lightglue_matcher import LightGlueMatcher
 from lunar_correspondence.matching.rift_matcher import RIFTMatcher
+from lunar_correspondence.matching.spatial_selection import select_spatial_matches
 
 
 class RegistrationPipeline:
@@ -87,7 +90,22 @@ class RegistrationPipeline:
         features_ref = self.feature_extractor.extract(reference_image)
 
         # 2. Feature Matching
-        match_set = self.matcher.match(features_src, features_ref)
+        raw_match_set = self.matcher.match(features_src, features_ref)
+
+        # 2b. Spatial Match Selection (prior to RANSAC)
+        match_cfg = self.config.get("matching", {})
+        spatial_cfg = match_cfg.get("spatial_selection", {})
+        if spatial_cfg.get("enabled", False):
+            src_shape = (source_image.height, source_image.width)
+            match_set = select_spatial_matches(
+                match_set=raw_match_set,
+                image_shape=src_shape,
+                grid_rows=spatial_cfg.get("grid_rows", 8),
+                grid_cols=spatial_cfg.get("grid_cols", 8),
+                top_k=spatial_cfg.get("top_k", 4),
+            )
+        else:
+            match_set = raw_match_set
 
         # 3. Geometric RANSAC Estimation
         geo_cfg = self.config.get("geometry", {})
@@ -105,6 +123,70 @@ class RegistrationPipeline:
 
         # Update match_set inlier_mask
         match_set.inlier_mask = geometric_model.inlier_mask
+
+        # 3b. Sub-pixel Refinement (optional/configurable, post-RANSAC on inliers)
+        subpix_cfg = geo_cfg.get("subpixel_refinement", {})
+        pre_refinement_rmse: float | None = None
+        post_refinement_rmse: float | None = None
+
+        inlier_count = (
+            int(np.sum(geometric_model.inlier_mask))
+            if geometric_model.inlier_mask is not None
+            else 0
+        )
+        if inlier_count > 0 and geometric_model.reprojection_errors is not None:
+            inlier_errs = geometric_model.reprojection_errors[
+                geometric_model.inlier_mask
+            ]
+            pre_refinement_rmse = (
+                float(np.sqrt(np.mean(inlier_errs**2)))
+                if len(inlier_errs) > 0
+                else None
+            )
+
+        if subpix_cfg.get("enabled", False) and inlier_count > 0:
+            win_size_val = subpix_cfg.get("win_size", 5)
+            win_size = (
+                (win_size_val, win_size_val)
+                if isinstance(win_size_val, int)
+                else tuple(win_size_val)
+            )
+            zero_zone_val = subpix_cfg.get("zero_zone", -1)
+            zero_zone = (
+                (zero_zone_val, zero_zone_val)
+                if isinstance(zero_zone_val, int)
+                else tuple(zero_zone_val)
+            )
+
+            inliers_src = match_set.source_points[geometric_model.inlier_mask]
+            inliers_ref = match_set.reference_points[geometric_model.inlier_mask]
+
+            refined_src = refine_subpixel(
+                image_array=source_image.array,
+                keypoints_xy=inliers_src,
+                win_size=win_size,
+                zero_zone=zero_zone,
+            )
+            refined_ref = refine_subpixel(
+                image_array=reference_image.array,
+                keypoints_xy=inliers_ref,
+                win_size=win_size,
+                zero_zone=zero_zone,
+            )
+
+            # Update match set inlier coordinates
+            match_set.source_points[geometric_model.inlier_mask] = refined_src
+            match_set.reference_points[geometric_model.inlier_mask] = refined_ref
+
+            # Recompute reprojection errors on refined inlier points under current model
+            post_errors = compute_reprojection_errors(
+                refined_src, refined_ref, geometric_model.transform_matrix
+            )
+            post_refinement_rmse = (
+                float(np.sqrt(np.mean(post_errors**2)))
+                if len(post_errors) > 0
+                else None
+            )
 
         # 4. Warp Source Image to Reference Canvas
         ref_shape = (reference_image.height, reference_image.width)
@@ -132,6 +214,8 @@ class RegistrationPipeline:
             grid_cols=eval_cfg.get("grid_cols", 4),
             processing_time_seconds=elapsed_time,
             random_seed=self.random_seed,
+            pre_refinement_rmse_pixels=pre_refinement_rmse,
+            post_refinement_rmse_pixels=post_refinement_rmse,
         )
 
         return reg_result, eval_result
@@ -159,10 +243,10 @@ def run_registration(
         max_sz = max(max_src, max_ref)
         if max_sz > max_dim:
             scale_factor = float(max_dim) / float(max_sz)
-            new_src_w = int(round(source.width * scale_factor))
-            new_src_h = int(round(source.height * scale_factor))
-            new_ref_w = int(round(reference.width * scale_factor))
-            new_ref_h = int(round(reference.height * scale_factor))
+            new_src_w = round(source.width * scale_factor)
+            new_src_h = round(source.height * scale_factor)
+            new_ref_w = round(reference.width * scale_factor)
+            new_ref_h = round(reference.height * scale_factor)
 
             src_arr_ds = cv2.resize(source.array, (new_src_w, new_src_h))
             if src_arr_ds.ndim == 2:

@@ -7,11 +7,9 @@ Any accidental change to these structures will be caught here.
 CRITICAL: Do NOT weaken or remove these tests.
 """
 
-import dataclasses
 from dataclasses import fields
 
 import numpy as np
-import pytest
 
 from lunar_correspondence.io.metadata import (
     EvaluationResult,
@@ -20,7 +18,6 @@ from lunar_correspondence.io.metadata import (
     ImageData,
     ImageMetadata,
     MatchSet,
-    RegistrationResult,
 )
 
 

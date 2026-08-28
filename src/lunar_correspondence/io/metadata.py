@@ -126,3 +126,5 @@ class EvaluationResult:
     processing_time_seconds: float
     random_seed: int
     scale_factor: float = 1.0
+    pre_refinement_rmse_pixels: float | None = None
+    post_refinement_rmse_pixels: float | None = None

@@ -36,6 +36,11 @@ matching:
   rift:
     norm_type: "L2"
     ratio_test_threshold: 0.90  # More permissive for MIM histograms
+  spatial_selection:
+    enabled: true
+    grid_rows: 8
+    grid_cols: 8
+    top_k: 4
 
 geometry:
   model_type: "homography"  # Options: homography, affine

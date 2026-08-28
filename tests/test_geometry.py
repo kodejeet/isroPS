@@ -50,3 +50,33 @@ def test_warp_image():
     warped = warp_image(img_src, geo_model, output_shape=(100, 100))
     assert warped.shape == (100, 100, 1)
     assert np.array_equal(warped, img_src)
+
+
+def test_ransac_self_match_all_inliers_zero_error():
+    """RANSAC on identical points should find identity transform with 100% inliers and 0 error."""
+    pts_src = np.array(
+        [[10, 10], [50, 20], [30, 80], [90, 90], [120, 150], [200, 210]],
+        dtype=np.float32,
+    )
+    pts_ref = pts_src.copy()
+
+    match_set = MatchSet(source_points=pts_src, reference_points=pts_ref)
+    model = estimate_geometric_model(
+        match_set, model_type="homography", reproj_threshold=2.0
+    )
+
+    assert model.inlier_mask.sum() == 6
+    np.testing.assert_allclose(model.reprojection_errors, 0.0, atol=1e-5)
+    np.testing.assert_allclose(model.transform_matrix, np.eye(3), atol=1e-4)
+
+
+def test_ransac_insufficient_points():
+    """RANSAC with fewer than 4 points returns identity with 0 inliers."""
+    pts_src = np.array([[10, 10], [20, 20], [30, 30]], dtype=np.float32)
+    pts_ref = pts_src.copy()
+
+    match_set = MatchSet(source_points=pts_src, reference_points=pts_ref)
+    model = estimate_geometric_model(match_set, model_type="homography")
+
+    assert model.inlier_mask.sum() == 0
+    assert len(model.reprojection_errors) == 3
