@@ -1,0 +1,7 @@
+pair_id,source,reference,method,keypoints_source,keypoints_reference,candidate_matches,selected_matches,inliers,inlier_ratio,coverage,rmse,post_refine_rmse,median_error,runtime,status
+pair1_ohrc_track_shift,ohrc_20260103T100517_crop.tif,ohrc_20260103T041022_crop.tif,SIFT,378,652,5,5,5,1.0,25.0,2.5e-05,0.0,3.1e-05,0.06,SUCCESS
+pair1_ohrc_track_shift,ohrc_20260103T100517_crop.tif,ohrc_20260103T041022_crop.tif,RIFT2,3965,4166,5,5,4,0.8,18.75,3.9e-05,4.4e-05,2.4e-05,16.48,SUCCESS
+pair2_ohrc_high_overlap,ohrc_20260103T100517_crop.tif,ohrc_20260103T120356_crop.tif,SIFT,378,851,6,6,0,0.0,0.0,,,,0.08,FAIL
+pair2_ohrc_high_overlap,ohrc_20260103T100517_crop.tif,ohrc_20260103T120356_crop.tif,RIFT2,3965,4676,7,7,4,0.5714,25.0,9.4e-05,6e-05,7.8e-05,18.09,SUCCESS
+pair3_tmc2_stereo_nadir_aft,tmc2_20260813_ncn_crop.tif,tmc2_20260813_nra_crop.tif,SIFT,306,213,3,3,0,0.0,0.0,,,,0.09,FAIL
+pair3_tmc2_stereo_nadir_aft,tmc2_20260813_ncn_crop.tif,tmc2_20260813_nra_crop.tif,RIFT2,5715,5655,1,1,0,0.0,0.0,,,,20.46,FAIL
