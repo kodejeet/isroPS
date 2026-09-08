@@ -46,6 +46,13 @@ This directory contains small, representative 512x512 GeoTIFF crops extracted fr
 - **Crop Bounds:** Lines 50,000:50,512, Samples 1,500:2,012
 - **Footprint:** Equatorial Region (Lat -29.46° to -5.36°, Lon 140.78° to 142.69°)
 
+### 6. `lroc_m1347345441rc_tmc2_nadir_aligned.tif` (LROC NAC Reference)
+- **Mission / Instrument:** NASA LRO / LROC NAC Right Camera (0.93 m/pixel native, calibrated CDR)
+- **Product ID:** `M1347345441RC` (Orbit 49487)
+- **Acquisition Timestamp:** 2020-06-21T02:22:53.649Z
+- **Sun Incidence Angle:** 36.94° (vs TMC-2 39.06°, Δ = 2.12°)
+- **Footprint:** Lat -11.96° to -11.87°, Lon 142.03° to 142.12° (100% spatial intersection with TMC-2 Nadir benchmark crop)
+
 ---
 
 ## Evaluation Benchmark Pairs
@@ -53,6 +60,7 @@ This directory contains small, representative 512x512 GeoTIFF crops extracted fr
 1. **`pair1_ohrc_track_shift`**: `ohrc_20260103T100517_crop.tif` vs `ohrc_20260103T041022_crop.tif` (OHRC South Pole multi-orbit, ~6h gap, track shift)
 2. **`pair2_ohrc_high_overlap`**: `ohrc_20260103T100517_crop.tif` vs `ohrc_20260103T120356_crop.tif` (OHRC South Pole multi-orbit, ~2h gap, >95% geographic overlap)
 3. **`pair3_tmc2_stereo_nadir_aft`**: `tmc2_20260813_ncn_crop.tif` vs `tmc2_20260813_nra_crop.tif` (TMC-2 Equatorial stereo multi-view, 25° perspective look angle difference)
+4. **`pair4_tmc2_lroc_cross_sensor`**: `tmc2_20260813_ncn_crop.tif` vs `lroc_m1347345441rc_tmc2_nadir_aligned.tif` (ISRO TMC-2 Nadir vs NASA LROC NAC, 100% spatial overlap, 98% inlier ratio)
 
 ---
 
