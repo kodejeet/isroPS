@@ -31,17 +31,18 @@ def fuse_match_sets(
         weights = [1.0 / len(match_sets)] * len(match_sets)
 
     # Simple concatenation for stub baseline
+    valid_src = [m.source_points for m in match_sets if len(m.source_points) > 0]
+    valid_ref = [m.reference_points for m in match_sets if len(m.reference_points) > 0]
+
     src_pts = (
-        np.vstack([m.source_points for m in match_sets if len(m.source_points) > 0])
-        if match_sets
-        else np.zeros((0, 2))
+        np.vstack(valid_src).astype(np.float32)
+        if valid_src
+        else np.zeros((0, 2), dtype=np.float32)
     )
     ref_pts = (
-        np.vstack(
-            [m.reference_points for m in match_sets if len(m.reference_points) > 0]
-        )
-        if match_sets
-        else np.zeros((0, 2))
+        np.vstack(valid_ref).astype(np.float32)
+        if valid_ref
+        else np.zeros((0, 2), dtype=np.float32)
     )
 
     return MatchSet(

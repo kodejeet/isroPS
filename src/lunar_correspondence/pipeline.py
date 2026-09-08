@@ -17,13 +17,17 @@ from lunar_correspondence.geometry.refinement import refine_subpixel
 from lunar_correspondence.geometry.transforms import warp_image
 from lunar_correspondence.io.metadata import (
     EvaluationResult,
+    FeatureSet,
     ImageData,
     RegistrationResult,
 )
 from lunar_correspondence.matching.descriptor_matcher import DescriptorMatcher
+from lunar_correspondence.matching.fusion import fuse_match_sets
 from lunar_correspondence.matching.lightglue_matcher import LightGlueMatcher
 from lunar_correspondence.matching.rift_matcher import RIFTMatcher
 from lunar_correspondence.matching.spatial_selection import select_spatial_matches
+from lunar_correspondence.preprocessing.enhancement import apply_clahe
+from lunar_correspondence.preprocessing.tiling import generate_tiles
 
 
 class RegistrationPipeline:
@@ -39,31 +43,110 @@ class RegistrationPipeline:
         pipe_cfg = config.get("pipeline", {})
         self.random_seed = pipe_cfg.get("random_seed", 42)
 
-        # Instantiate Feature Extractor based on config
+        # Preprocessing: CLAHE
+        prep_cfg = config.get("preprocessing", {})
+        clahe_cfg = prep_cfg.get("clahe", {})
+        self.clahe_enabled = clahe_cfg.get("enabled", False)
+        self.clahe_clip_limit = float(clahe_cfg.get("clip_limit", 2.0))
+        grid_size = clahe_cfg.get("tile_grid_size", [8, 8])
+        self.clahe_grid_size = (
+            tuple(grid_size) if isinstance(grid_size, (list, tuple)) else (8, 8)
+        )
+
+        # Processing / Preprocessing: Tiling
+        tiling_cfg = config.get("processing", {}).get("tiling", {})
+        if not tiling_cfg:
+            tiling_cfg = prep_cfg.get("tiling", {})
+        self.tiling_enabled = tiling_cfg.get("enabled", False)
+        tile_sz = tiling_cfg.get("tile_size", [256, 256])
+        self.tile_size = (
+            tuple(tile_sz) if isinstance(tile_sz, (list, tuple)) else (256, 256)
+        )
+        self.tile_overlap = int(tiling_cfg.get("overlap", 32))
+
+        # Matching: Fusion
         feat_cfg = config.get("feature_extraction", {})
         feat_method = feat_cfg.get("method", "sift").lower()
-        if feat_method == "sift":
-            self.feature_extractor = SIFTFeatureExtractor(feat_cfg.get("sift", {}))
-        elif feat_method == "rift":
-            self.feature_extractor = RIFTFeatureExtractor(feat_cfg.get("rift", {}))
-        elif feat_method in ["learned", "lightglue"]:
-            self.feature_extractor = LearnedFeatureExtractor(
-                feat_cfg.get("learned", {})
-            )
-        else:
-            raise ValueError(f"Unsupported feature extraction method: {feat_method}")
-
-        # Instantiate Matcher based on config
         match_cfg = config.get("matching", {})
         match_method = match_cfg.get("method", "descriptor").lower()
-        if match_method == "descriptor":
-            self.matcher = DescriptorMatcher(match_cfg.get("descriptor", {}))
-        elif match_method == "rift":
-            self.matcher = RIFTMatcher(match_cfg.get("rift", {}))
-        elif match_method == "lightglue":
-            self.matcher = LightGlueMatcher(match_cfg.get("lightglue", {}))
+        fusion_cfg = config.get("matching", {}).get("fusion", {})
+        if not fusion_cfg:
+            fusion_cfg = config.get("fusion", {})
+        self.fusion_enabled = (
+            fusion_cfg.get("enabled", False)
+            or match_method == "fusion"
+            or feat_method == "fusion"
+        )
+        if self.fusion_enabled:
+            sift_feat_cfg = feat_cfg.get("sift", {})
+            self.sift_extractor = SIFTFeatureExtractor(sift_feat_cfg)
+            self.sift_matcher = DescriptorMatcher(match_cfg.get("descriptor", {}))
+
+            rift_feat_cfg = feat_cfg.get("rift", {})
+            self.rift_extractor = RIFTFeatureExtractor(rift_feat_cfg)
+            self.rift_matcher = RIFTMatcher(match_cfg.get("rift", {}))
+            self.feature_extractor = self.sift_extractor
+            self.matcher = self.sift_matcher
         else:
-            raise ValueError(f"Unsupported matching method: {match_method}")
+            # Instantiate Feature Extractor based on config
+            if feat_method == "sift":
+                self.feature_extractor = SIFTFeatureExtractor(feat_cfg.get("sift", {}))
+            elif feat_method == "rift":
+                self.feature_extractor = RIFTFeatureExtractor(feat_cfg.get("rift", {}))
+            elif feat_method in ["learned", "lightglue"]:
+                self.feature_extractor = LearnedFeatureExtractor(
+                    feat_cfg.get("learned", {})
+                )
+            else:
+                raise ValueError(f"Unsupported feature extraction method: {feat_method}")
+
+            # Instantiate Matcher based on config
+            if match_method == "descriptor":
+                self.matcher = DescriptorMatcher(match_cfg.get("descriptor", {}))
+            elif match_method == "rift":
+                self.matcher = RIFTMatcher(match_cfg.get("rift", {}))
+            elif match_method == "lightglue":
+                self.matcher = LightGlueMatcher(match_cfg.get("lightglue", {}))
+            else:
+                raise ValueError(f"Unsupported matching method: {match_method}")
+
+    def _extract_features(self, extractor: Any, image: ImageData) -> FeatureSet:
+        """Extract features, with optional grid tiling if enabled."""
+        if not self.tiling_enabled:
+            return extractor.extract(image)
+
+        tiles = generate_tiles(
+            image.array, tile_size=self.tile_size, overlap=self.tile_overlap
+        )
+        all_kps = []
+        all_descs = []
+        for (min_y, min_x, max_y, max_x), tile_crop in tiles:
+            tile_data = ImageData(
+                array=tile_crop, path=image.path, metadata=image.metadata
+            )
+            fset = extractor.extract(tile_data)
+            if len(fset.keypoints) > 0:
+                offset_kps = fset.keypoints.copy()
+                offset_kps[:, 0] += min_x
+                offset_kps[:, 1] += min_y
+                all_kps.append(offset_kps)
+                if fset.descriptors is not None:
+                    all_descs.append(fset.descriptors)
+
+        if not all_kps:
+            return FeatureSet(
+                keypoints=np.zeros((0, 2), dtype=np.float32),
+                descriptors=None,
+                method=getattr(extractor, "method_name", "tiled"),
+            )
+
+        merged_kps = np.vstack(all_kps).astype(np.float32)
+        merged_descs = np.vstack(all_descs) if all_descs else None
+        return FeatureSet(
+            keypoints=merged_kps,
+            descriptors=merged_descs,
+            method=getattr(extractor, "method_name", "tiled"),
+        )
 
     def run(
         self, source_image: ImageData, reference_image: ImageData
@@ -85,12 +168,42 @@ class RegistrationPipeline:
             np.random.seed(self.random_seed)
             cv2.setRNGSeed(self.random_seed)
 
-        # 1. Feature Extraction
-        features_src = self.feature_extractor.extract(source_image)
-        features_ref = self.feature_extractor.extract(reference_image)
+        # 0. Preprocessing: CLAHE if enabled
+        src_to_process = source_image
+        ref_to_process = reference_image
+        if self.clahe_enabled:
+            src_clahe = apply_clahe(
+                source_image.array,
+                clip_limit=self.clahe_clip_limit,
+                tile_grid_size=self.clahe_grid_size,
+            )
+            ref_clahe = apply_clahe(
+                reference_image.array,
+                clip_limit=self.clahe_clip_limit,
+                tile_grid_size=self.clahe_grid_size,
+            )
+            src_to_process = ImageData(
+                array=src_clahe, path=source_image.path, metadata=source_image.metadata
+            )
+            ref_to_process = ImageData(
+                array=ref_clahe, path=reference_image.path, metadata=reference_image.metadata
+            )
 
-        # 2. Feature Matching
-        raw_match_set = self.matcher.match(features_src, features_ref)
+        # 1 & 2. Feature Extraction & Matching
+        if self.fusion_enabled:
+            sift_src = self._extract_features(self.sift_extractor, src_to_process)
+            sift_ref = self._extract_features(self.sift_extractor, ref_to_process)
+            sift_matches = self.sift_matcher.match(sift_src, sift_ref)
+
+            rift_src = self._extract_features(self.rift_extractor, src_to_process)
+            rift_ref = self._extract_features(self.rift_extractor, ref_to_process)
+            rift_matches = self.rift_matcher.match(rift_src, rift_ref)
+
+            raw_match_set = fuse_match_sets([sift_matches, rift_matches])
+        else:
+            features_src = self._extract_features(self.feature_extractor, src_to_process)
+            features_ref = self._extract_features(self.feature_extractor, ref_to_process)
+            raw_match_set = self.matcher.match(features_src, features_ref)
 
         # 2b. Spatial Match Selection (prior to RANSAC)
         match_cfg = self.config.get("matching", {})

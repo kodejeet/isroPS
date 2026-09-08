@@ -128,3 +128,6 @@ class EvaluationResult:
     scale_factor: float = 1.0
     pre_refinement_rmse_pixels: float | None = None
     post_refinement_rmse_pixels: float | None = None
+    unique_inlier_count: int = 0
+    is_degenerate: bool = False
+    quality_warning: str | None = None
