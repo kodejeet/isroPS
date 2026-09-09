@@ -113,3 +113,99 @@ def test_pipeline_spatial_selection_configurable(tmp_path):
     assert eval_on.total_matches <= (8 * 8 * 2)
     assert eval_on.total_matches <= eval_off.total_matches
     assert eval_on.inlier_matches > 0
+
+
+def test_pipeline_clahe_enabled(tmp_path):
+    """Pipeline runs end-to-end with CLAHE contrast enhancement enabled."""
+    synth_dir = str(tmp_path / "clahe_test")
+    src_path, ref_path, _ = generate_synthetic_lunar_pair(synth_dir, seed=42)
+
+    src_img = cv2.imread(src_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+    ref_img = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+
+    src_data = ImageData(
+        array=src_img, path=src_path, metadata=ImageMetadata(instrument="TEST")
+    )
+    ref_data = ImageData(
+        array=ref_img, path=ref_path, metadata=ImageMetadata(instrument="TEST")
+    )
+
+    cfg = load_config(os.path.abspath("configs/default.yaml"))
+    cfg["preprocessing"] = {
+        "clahe": {"enabled": True, "clip_limit": 3.0, "tile_grid_size": [8, 8]}
+    }
+    pipe = RegistrationPipeline(cfg)
+    reg_res, eval_res = pipe.run(src_data, ref_data)
+    assert reg_res.registered_image is not None
+    assert eval_res.inlier_matches > 0
+
+
+def test_pipeline_tiling_enabled(tmp_path):
+    """Pipeline extracts features via spatial tiling when enabled."""
+    synth_dir = str(tmp_path / "tiling_test")
+    src_path, ref_path, _ = generate_synthetic_lunar_pair(synth_dir, seed=42)
+
+    src_img = cv2.imread(src_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+    ref_img = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+
+    src_data = ImageData(
+        array=src_img, path=src_path, metadata=ImageMetadata(instrument="TEST")
+    )
+    ref_data = ImageData(
+        array=ref_img, path=ref_path, metadata=ImageMetadata(instrument="TEST")
+    )
+
+    cfg = load_config(os.path.abspath("configs/default.yaml"))
+    cfg["processing"] = {
+        "tiling": {"enabled": True, "tile_size": [256, 256], "overlap": 32}
+    }
+    pipe = RegistrationPipeline(cfg)
+    reg_res, eval_res = pipe.run(src_data, ref_data)
+    assert reg_res.registered_image is not None
+    assert eval_res.inlier_matches > 0
+
+
+def test_pipeline_fusion_enabled(tmp_path):
+    """Pipeline executes multi-matcher fusion (SIFT + RIFT) when enabled."""
+    synth_dir = str(tmp_path / "fusion_test")
+    src_path, ref_path, _ = generate_synthetic_lunar_pair(synth_dir, seed=42)
+
+    src_img = cv2.imread(src_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+    ref_img = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)[:, :, np.newaxis]
+
+    src_data = ImageData(
+        array=src_img, path=src_path, metadata=ImageMetadata(instrument="TEST")
+    )
+    ref_data = ImageData(
+        array=ref_img, path=ref_path, metadata=ImageMetadata(instrument="TEST")
+    )
+
+    cfg = load_config(os.path.abspath("configs/default.yaml"))
+    cfg["matching"]["fusion"] = {"enabled": True}
+    cfg["feature_extraction"]["rift"] = {"npt": 500}
+    pipe = RegistrationPipeline(cfg)
+    reg_res, eval_res = pipe.run(src_data, ref_data)
+    assert reg_res.registered_image is not None
+    assert eval_res.total_matches > 0
+
+
+def test_pipeline_degeneracy_detection():
+    """EvaluationResult correctly flags underconstrained/degenerate models (< 6 unique inliers)."""
+    from lunar_correspondence.evaluation.metrics import evaluate_registration
+    from lunar_correspondence.io.metadata import GeometricModel, MatchSet
+
+    # 4 identical/clustered points
+    src_pts = np.array([[10, 10], [11, 10], [10, 11], [50, 50]], dtype=np.float32)
+    ref_pts = np.array([[20, 20], [21, 20], [20, 21], [60, 60]], dtype=np.float32)
+    mset = MatchSet(source_points=src_pts, reference_points=ref_pts)
+    gmodel = GeometricModel(
+        model_type="homography",
+        transform_matrix=np.eye(3, dtype=np.float32),
+        inlier_mask=np.array([True, True, True, True]),
+        reprojection_errors=np.array([0.01, 0.01, 0.01, 0.01], dtype=np.float32),
+    )
+
+    eval_res = evaluate_registration(mset, gmodel, reference_shape=(512, 512))
+    assert eval_res.is_degenerate is True
+    assert eval_res.quality_warning is not None
+    assert "Underconstrained model" in eval_res.quality_warning

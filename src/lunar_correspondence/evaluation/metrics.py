@@ -114,6 +114,71 @@ def evaluate_registration(
         else rmse
     )
 
+    # Deduplicate inlier points and assess geometric validity
+    unique_inlier_count = 0
+    is_degenerate = False
+    warning_reasons = []
+
+    if inlier_matches > 0 and inliers_mask is not None:
+        inlier_src = match_set.source_points[inliers_mask]
+        inlier_ref = match_set.reference_points[inliers_mask]
+
+        if len(inlier_src) > 0:
+            unique_mask = np.ones(len(inlier_src), dtype=bool)
+            for i in range(len(inlier_src)):
+                if not unique_mask[i]:
+                    continue
+                dists = np.linalg.norm(inlier_src[i + 1 :] - inlier_src[i], axis=1)
+                for j, d in enumerate(dists):
+                    if d < 2.0:
+                        unique_mask[i + 1 + j] = False
+            unique_inlier_count = int(np.sum(unique_mask))
+        else:
+            unique_inlier_count = 0
+
+        if unique_inlier_count < 6:
+            warning_reasons.append(
+                f"Underconstrained model: only {unique_inlier_count} unique inliers (< 6 required for statistical reliability)"
+            )
+            is_degenerate = True
+
+        # Check displacement vector consistency
+        if unique_inlier_count >= 2:
+            dx = inlier_ref[:, 0] - inlier_src[:, 0]
+            dy = inlier_ref[:, 1] - inlier_src[:, 1]
+            pos_dx = np.sum(dx > 30.0)
+            neg_dx = np.sum(dx < -30.0)
+            pos_dy = np.sum(dy > 30.0)
+            neg_dy = np.sum(dy < -30.0)
+            if (pos_dx > 0 and neg_dx > 0) or (pos_dy > 0 and neg_dy > 0):
+                warning_reasons.append(
+                    "Inconsistent displacement vectors: opposing directions detected in inlier set"
+                )
+                is_degenerate = True
+
+        # Check homography projective singularity / folding
+        H = geometric_model.transform_matrix
+        if (
+            H is not None
+            and H.shape == (3, 3)
+            and getattr(geometric_model, "model_type", "homography") == "homography"
+        ):
+            ref_h, ref_w = reference_shape
+            corners = np.array(
+                [[0, 0], [ref_w, 0], [ref_w, ref_h], [0, ref_h]], dtype=np.float32
+            )
+            denoms = H[2, 0] * corners[:, 0] + H[2, 1] * corners[:, 1] + H[2, 2]
+            if np.any(denoms <= 0.05) or (np.min(denoms) * np.max(denoms) <= 0):
+                warning_reasons.append(
+                    "Homography projective singularity: denominator approaches or crosses zero within canvas"
+                )
+                is_degenerate = True
+    else:
+        is_degenerate = True
+        warning_reasons.append("Zero inliers established")
+
+    quality_warning = "; ".join(warning_reasons) if warning_reasons else None
+
     return EvaluationResult(
         total_matches=total_matches,
         inlier_matches=inlier_matches,
@@ -126,4 +191,7 @@ def evaluate_registration(
         random_seed=random_seed,
         pre_refinement_rmse_pixels=pre_rmse,
         post_refinement_rmse_pixels=post_refinement_rmse_pixels,
+        unique_inlier_count=unique_inlier_count,
+        is_degenerate=is_degenerate,
+        quality_warning=quality_warning,
     )

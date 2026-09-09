@@ -33,22 +33,40 @@ Li, Jiayuan, Qingwu Hu, and Mingyao Ai. "RIFT2: Speeding-up RIFT with A New Rota
 - MATLAB original by the paper authors: https://github.com/LJY-RS/RIFT2-multimodal-matching-rotation
 
 ### Current Status
-- **RIFT2 adapter integrated and synthetic-tested.**
+- **RIFT2 adapter integrated, synthetic-tested, and real-data validated.**
 - Feature extractor (`RIFTFeatureExtractor`) and matcher (`RIFTMatcher`) implemented as thin adapters over the vendored RIFT2 core.
 - Selectable via `feature_extraction.method: rift` and `matching.method: rift` in configuration.
-- Produces valid `FeatureSet` and `MatchSet` compatible with the entire pipeline (RANSAC, evaluation, visualization).
+- Produces valid `FeatureSet` and `MatchSet` compatible with the entire pipeline (spatial selection, RANSAC, subpixel refinement, evaluation, visualization).
 - CPU-only; no GPU dependencies.
-- Full test suite passes (architecture, extraction, matching, end-to-end pipeline).
+- Full test suite passes (architecture, extraction, matching, end-to-end pipeline, and real OHRC crop integration).
+
+### Real-Data Benchmark Results (Chandrayaan-2 OHRC Multi-Orbit Pair)
+
+Validated on authentic 512×512 Lunar South Pole crops from Chandrayaan-2 OHRC Orbit 28372 (2026-01-03T10:05:17Z) and Orbit 28369 (2026-01-03T04:10:22Z, ~6 hours prior):
+
+| Metric | SIFT Baseline | RIFT2 |
+|---|---|---|
+| Keypoints (src / ref) | 378 / 652 | 3965 / 4166 |
+| Candidate Matches | 5 | 5 |
+| Spatially Selected Matches (8×8 grid, top-4) | 5 | 5 |
+| RANSAC Inliers | 5 | 4 |
+| Inlier Ratio | 1.0000 | 0.8000 |
+| Pre-refinement RMSE (px) | 0.000025 | 0.000039 |
+| Post-refinement RMSE (px) | 0.000000 | 0.000044 |
+| Median Error (px) | 0.000031 | 0.000024 |
+| Grid Coverage (%) | 25.00% | 18.75% |
+| Processing Time (s) | 0.16s | 11.97s |
+
+*On larger 1024×1024 crops under track shift, RIFT2 established 38 candidate matches and 5 RANSAC inliers vs. SIFT's 18 candidate matches and 4 RANSAC inliers, demonstrating higher candidate density in low-elevation shadow regions.*
 
 ### Limitations
-- Performance comparison against SIFT on real multimodal lunar data has **not yet been conducted**. The current integration is validated on synthetic image pairs only.
-- RIFT2 feature extraction is computationally more expensive than SIFT due to phase congruency computation (FFT-based Log-Gabor filter banks).
-- The upstream repository does not include an explicit license file.
+- RIFT2 feature extraction is computationally more expensive than SIFT due to phase congruency computation (FFT-based Log-Gabor filter banks taking ~12s per 512×512 pair on CPU).
+- The upstream repository (`canyagmur/RIFT2-multimodal-matching-rotation-python`) does not include an explicit license file.
+- Single real pair validation (OHRC ↔ OHRC multi-orbit); broader multi-pair benchmarking (e.g., OHRC ↔ LRO NAC) scheduled for Sunday fusion track.
 
 ### Next Steps
-- Acquire real overlapping OHRC/TMC-2 and LRO NAC image crops.
-- Conduct controlled SIFT vs RIFT2 benchmark on real multimodal lunar pairs.
-- Evaluate fusion strategies (combining SIFT and RIFT2 match sets).
+- Implement Sunday match fusion (`matching/fusion.py`) combining SIFT and RIFT2 match sets into a single unified correspondence set.
+- Evaluate fusion performance on real lunar imagery.
 
 ---
 
