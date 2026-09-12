@@ -15,6 +15,33 @@ from lunar_correspondence.geometry.homography import compute_reprojection_errors
 from lunar_correspondence.io.metadata import GeometricModel, MatchSet
 
 
+def is_valid_homography(
+    H: np.ndarray | None,
+    domain_size: tuple[int, int] = (512, 512),
+) -> bool:
+    """Validate that homography H does not contain projective singularities or extreme distortion."""
+    if H is None or not np.all(np.isfinite(H)):
+        return False
+    if abs(H[2, 2]) < 1e-9:
+        return False
+
+    H_norm = H / H[2, 2]
+    w, h = domain_size
+    corners = np.array(
+        [[0, 0, 1], [w, 0, 1], [0, h, 1], [w, h, 1], [w / 2, h / 2, 1]],
+        dtype=np.float32,
+    )
+    denoms = corners @ H_norm[2, :]
+    if np.any(denoms <= 0.15) or np.any(denoms >= 8.0):
+        return False
+
+    det = np.linalg.det(H_norm[:2, :2])
+    if det <= 0.02 or det >= 50.0:
+        return False
+
+    return True
+
+
 def estimate_geometric_model(
     match_set: MatchSet,
     model_type: str = "homography",
@@ -44,7 +71,7 @@ def estimate_geometric_model(
         np.random.seed(random_seed)
 
     if len(pts_src) < 4:
-        # Insufficient points for homography estimation
+        # Insufficient points for geometric estimation
         return GeometricModel(
             transform_matrix=np.eye(3, dtype=np.float32),
             model_type=model_type,
@@ -66,7 +93,6 @@ def estimate_geometric_model(
             errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = np.zeros(len(pts_src), dtype=bool)
         else:
-            # Convert 2x3 affine matrix to 3x3 homogeneous matrix
             H = np.vstack([matrix, [0.0, 0.0, 1.0]]).astype(np.float32)
             errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = (
@@ -75,7 +101,7 @@ def estimate_geometric_model(
                 else (errors <= reproj_threshold)
             )
     else:
-        # Default Homography estimation
+        # Default Homography estimation with Affine fallback
         H, mask = cv2.findHomography(
             pts_src,
             pts_ref,
@@ -84,7 +110,27 @@ def estimate_geometric_model(
             maxIters=max_iters,
             confidence=confidence,
         )
-        if H is None:
+
+        h_valid = is_valid_homography(H)
+        h_inliers = mask.sum() if (mask is not None and h_valid) else 0
+
+        # If homography is degenerate or poorly supported (<6 inliers), try affine
+        if (not h_valid or h_inliers < 6) and len(pts_src) >= 3:
+            matrix, aff_mask = cv2.estimateAffine2D(
+                pts_src,
+                pts_ref,
+                method=cv2.RANSAC,
+                ransacReprojThreshold=reproj_threshold,
+                maxIters=max_iters,
+                confidence=confidence,
+            )
+            aff_inliers = aff_mask.sum() if aff_mask is not None else 0
+            if matrix is not None and (aff_inliers >= h_inliers or not h_valid):
+                H = np.vstack([matrix, [0.0, 0.0, 1.0]]).astype(np.float32)
+                mask = aff_mask
+                model_type = "affine"
+
+        if H is None or not np.all(np.isfinite(H)):
             H = np.eye(3, dtype=np.float32)
             errors = compute_reprojection_errors(pts_src, pts_ref, H)
             inlier_mask = np.zeros(len(pts_src), dtype=bool)

@@ -4,13 +4,19 @@ pipeline:
   random_seed: 42
   device: "cpu"
 
+preprocessing:
+  clahe:
+    enabled: true
+    clip_limit: 3.0
+    tile_grid_size: [8, 8]
+
 feature_extraction:
   method: "sift"  # Options: sift, rift, lightglue (stub)
   sift:
-    nfeatures: 2000
-    nOctaveLayers: 3
-    contrastThreshold: 0.04
-    edgeThreshold: 10
+    nfeatures: 5000
+    nOctaveLayers: 4
+    contrastThreshold: 0.015
+    edgeThreshold: 15
     sigma: 1.6
   rift:
     nscale: 4
@@ -32,7 +38,7 @@ matching:
   descriptor:
     norm_type: "L2"
     cross_check: false
-    ratio_test_threshold: 0.75  # Lowe's ratio test threshold
+    ratio_test_threshold: 0.82  # Lowe's ratio test threshold
   rift:
     norm_type: "L2"
     ratio_test_threshold: 0.90  # More permissive for MIM histograms
@@ -40,7 +46,7 @@ matching:
     enabled: true
     grid_rows: 8
     grid_cols: 8
-    top_k: 4
+    top_k: 8
 
 geometry:
   model_type: "homography"  # Options: homography, affine
