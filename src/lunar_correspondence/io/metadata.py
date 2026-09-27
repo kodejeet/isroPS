@@ -131,3 +131,9 @@ class EvaluationResult:
     unique_inlier_count: int = 0
     is_degenerate: bool = False
     quality_warning: str | None = None
+    reference_gsd_m: float | None = None
+    rmse_meters: float | None = None
+    median_error_meters: float | None = None
+    p90_error_pixels: float | None = None
+    p90_error_meters: float | None = None
+
