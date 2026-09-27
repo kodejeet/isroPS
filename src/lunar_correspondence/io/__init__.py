@@ -11,6 +11,7 @@ from lunar_correspondence.io.metadata import (
     MatchSet,
     RegistrationResult,
 )
+from lunar_correspondence.io.terminal_logger import TerminalLogger
 from lunar_correspondence.io.writers import save_metrics_json, save_registered_image
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "ImageMetadata",
     "MatchSet",
     "RegistrationResult",
+    "TerminalLogger",
     "detect_image_format",
     "load_image",
     "save_metrics_json",

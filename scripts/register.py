@@ -14,7 +14,11 @@ import pandas as pd
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 
+from app.components.dataset_loader import load_windowed_pair
 from lunar_correspondence.config import load_config
 from lunar_correspondence.io.image_loader import load_image
 from lunar_correspondence.io.writers import save_metrics_json, save_registered_image
@@ -54,38 +58,64 @@ def main():
     parser.add_argument(
         "--output-dir", type=str, default="./outputs", help="Base output directory"
     )
+    parser.add_argument(
+        "--subpixel",
+        action="store_true",
+        help="Enable sub-pixel corner refinement on inlier tiepoints for benchmarking",
+    )
     args = parser.parse_args()
 
-    # Check for PDS4 raw product extension attempt
-    for path in [args.source, args.reference]:
-        ext = os.path.splitext(path)[1].lower()
-        if ext in [".xml", ".lbl", ".img", ".qub"]:
-            print(f"\n[!] Error: File '{path}' appears to be a raw PDS4 product.")
-            print("    Direct PDS4 ingestion is not supported in this prototype.")
-            print(
-                "    Please convert to GeoTIFF using GDAL: gdal_translate <input.xml> <output.tif>"
-            )
-            print("    See data/README.md for details.")
-            sys.exit(1)
-
-    print("==========================================================")
-    print("        LUNAR REAL-IMAGE REGISTRATION PIPELINE             ")
-    print("==========================================================")
-
     config = load_config(args.config)
-    print(
-        f"[*] Loaded configuration: {config.get('pipeline', {}).get('name', 'sift_baseline')}"
-    )
-    print(f"[*] Loading Source:    {args.source} [{args.source_instrument}]")
-    print(f"[*] Loading Reference: {args.reference} [{args.reference_instrument}]")
+    if args.subpixel:
+        if "geometry" not in config:
+            config["geometry"] = {}
+        if "subpixel_refinement" not in config["geometry"]:
+            config["geometry"]["subpixel_refinement"] = {}
+        config["geometry"]["subpixel_refinement"]["enabled"] = True
 
-    source_data = load_image(args.source, instrument=args.source_instrument)
-    ref_data = load_image(args.reference, instrument=args.reference_instrument)
+    source_exists = os.path.isfile(args.source)
+    ref_exists = os.path.isfile(args.reference)
 
-    print(f"    - Source shape:    {source_data.array.shape}")
-    print(f"    - Reference shape: {ref_data.array.shape}")
+    if (
+        source_exists
+        and ref_exists
+        and not (args.source.lower().endswith(".img") or args.reference.lower().endswith(".img"))
+    ):
+        source_data = load_image(args.source, instrument=args.source_instrument)
+        ref_data = load_image(args.reference, instrument=args.reference_instrument)
+    else:
+        inst = args.source_instrument
+        if inst == "UNKNOWN":
+            s_low = args.source.lower()
+            if "tmc" in s_low:
+                inst = "TMC-2"
+            elif "ohrc" in s_low:
+                inst = "OHRC"
+            elif "iirs" in s_low:
+                inst = "IIRS"
+            else:
+                inst = "TMC-2"
 
-    print("[*] Running registration via run_registration()...")
+        ref_file = args.reference if ref_exists else ""
+        source_data, ref_data, pair_meta = load_windowed_pair(
+            instrument=inst,
+            ch2_product_id=args.source,
+            lroc_filename=os.path.basename(args.reference),
+            lroc_filepath=ref_file,
+            target_crop_size=512,
+        )
+        if "profile" not in config:
+            if inst == "TMC-2":
+                config["profile"] = "TMC2"
+            elif inst == "OHRC":
+                config["profile"] = "OHRC_SIH_5M"
+            elif inst == "IIRS":
+                config["profile"] = (
+                    "IIRS_SOUTH_POLE_WAC"
+                    if "15194" in args.source or "South" in args.source
+                    else "IIRS_EQUATORIAL_WAC"
+                )
+
     reg_result, eval_result = run_registration(source_data, ref_data, config)
 
     # Per-run timestamped output directory
@@ -141,26 +171,12 @@ def main():
     )
     df_matches.to_csv(csv_matches_path, index=False)
 
-    print("\n------------------- EVALUATION RESULTS -------------------")
-    print(f" Total Matches:           {eval_result.total_matches}")
-    print(f" Inlier Matches:          {eval_result.inlier_matches}")
-    print(f" Inlier Ratio:            {eval_result.inlier_ratio:.4f}")
-    print(
-        f" RMSE (pixels):           {eval_result.rmse_pixels:.4f}"
-        if eval_result.rmse_pixels is not None
-        else " RMSE: N/A"
-    )
-    print(
-        f" Median Error (pixels):   {eval_result.median_error_pixels:.4f}"
-        if eval_result.median_error_pixels is not None
-        else " Median Error: N/A"
-    )
-    print(f" Grid Coverage (%):       {eval_result.coverage:.2f}%")
-    print(f" Scale Factor:            {eval_result.scale_factor}")
-    print(f" Processing Time:         {eval_result.processing_time_seconds:.3f} s")
-    print("----------------------------------------------------------")
-    print(f"[*] Results saved to: {os.path.abspath(run_output_dir)}")
-    print("Done.")
+    print(f"[*] Artifacts successfully written to: {os.path.abspath(run_output_dir)}")
+    print(f"    - Registered image:   {os.path.basename(reg_out_path)}")
+    print(f"    - Match lines plot:   {os.path.basename(matches_viz_path)}")
+    print(f"    - Blend overlay:      {os.path.basename(overlay_viz_path)}")
+    print(f"    - Evaluation metrics: {os.path.basename(metrics_json_path)}")
+    print(f"    - Inlier tiepoints:   {os.path.basename(csv_matches_path)}\n")
 
 
 if __name__ == "__main__":

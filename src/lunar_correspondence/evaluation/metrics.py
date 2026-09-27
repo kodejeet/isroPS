@@ -59,6 +59,7 @@ def evaluate_registration(
     random_seed: int = 42,
     pre_refinement_rmse_pixels: float | None = None,
     post_refinement_rmse_pixels: float | None = None,
+    reference_gsd_m: float | None = None,
 ) -> EvaluationResult:
     """Evaluate registration quality and compute ISRO PS metric deliverables.
 
@@ -72,6 +73,7 @@ def evaluate_registration(
         random_seed: Random seed used during pipeline run.
         pre_refinement_rmse_pixels: Pre-subpixel-refinement RMSE if refinement ran.
         post_refinement_rmse_pixels: Post-subpixel-refinement RMSE if refinement ran.
+        reference_gsd_m: Ground Sampling Distance of reference raster in meters per pixel.
 
     Returns:
         EvaluationResult populated with quantitative metrics.
@@ -84,6 +86,7 @@ def evaluate_registration(
         (float(inlier_matches) / float(total_matches)) if total_matches > 0 else 0.0
     )
 
+    p90_err: float | None = None
     if inlier_matches > 0 and geometric_model.reprojection_errors is not None:
         inlier_errors = geometric_model.reprojection_errors[inliers_mask]
         rmse = (
@@ -92,11 +95,19 @@ def evaluate_registration(
             else None
         )
         median_err = float(np.median(inlier_errors)) if len(inlier_errors) > 0 else None
+        p90_err = float(np.percentile(inlier_errors, 90)) if len(inlier_errors) > 0 else None
         inlier_pts_ref = match_set.reference_points[inliers_mask]
     else:
         rmse = None
         median_err = None
+        p90_err = None
         inlier_pts_ref = np.zeros((0, 2), dtype=np.float32)
+
+    # Compute physical residuals in meters if reference GSD is available
+    rmse_meters = (rmse * reference_gsd_m) if (rmse is not None and reference_gsd_m is not None) else None
+    med_meters = (median_err * reference_gsd_m) if (median_err is not None and reference_gsd_m is not None) else None
+    p90_meters = (p90_err * reference_gsd_m) if (p90_err is not None and reference_gsd_m is not None) else None
+
 
     coverage = compute_grid_coverage(
         inlier_points_xy=inlier_pts_ref,
@@ -194,4 +205,10 @@ def evaluate_registration(
         unique_inlier_count=unique_inlier_count,
         is_degenerate=is_degenerate,
         quality_warning=quality_warning,
+        reference_gsd_m=reference_gsd_m,
+        rmse_meters=rmse_meters,
+        median_error_meters=med_meters,
+        p90_error_pixels=p90_err,
+        p90_error_meters=p90_meters,
     )
+

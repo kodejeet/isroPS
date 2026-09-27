@@ -3,12 +3,14 @@
 SIH 2026 Problem Statement 26166: Multi-modal Lunar Image Correspondence.
 """
 
+import csv
 import io
 import json
 import os
 import re
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
@@ -235,6 +237,214 @@ def generate_json_export(run_data: dict[str, Any]) -> str:
         "planetary_metadata": planetary_meta,
     }
     return json.dumps(clean_dict, indent=2)
+
+
+def generate_csv_export(run_data: dict[str, Any]) -> str:
+    """Generate clean, unbloated CSV export of tiepoints and registration summary for researchers."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Metadata comment header
+    instrument = (
+        run_data.get("instrument")
+        or run_data.get("dataset_provenance", {}).get("instrument", "TMC-2")
+    )
+    ch2_prod = (
+        run_data.get("ch2_product_id")
+        or run_data.get("dataset_provenance", {}).get("ch2_product_id", "Unknown")
+    )
+    lroc_ref = (
+        run_data.get("lroc_filename")
+        or run_data.get("dataset_provenance", {}).get("lroc_reference", "Unknown")
+    )
+    inliers = int(
+        run_data.get("inlier_matches")
+        or run_data.get("registration_metrics", {}).get("inlier_matches", 0)
+    )
+    total = int(
+        run_data.get("total_matches")
+        or run_data.get("registration_metrics", {}).get("total_matches", 0)
+    )
+    rmse = (
+        run_data.get("rmse_pixels")
+        or run_data.get("registration_metrics", {}).get("reprojection_rmse_pixels", 0.0)
+    )
+    cov = (
+        run_data.get("coverage")
+        or run_data.get("registration_metrics", {}).get("spatial_coverage_percent", 0.0)
+    )
+
+    output.write("# ChandraMap Registration Export (SIH 2026 PS 26166)\n")
+    output.write(f"# Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n")
+    output.write(f"# Instrument: {instrument}\n")
+    output.write(f"# Source Product: {ch2_prod}\n")
+    output.write(f"# Reference: {lroc_ref}\n")
+    output.write(f"# Inliers: {inliers} / {total}\n")
+    output.write(f"# Reprojection RMSE (px): {float(rmse):.4f}\n")
+    output.write(f"# Spatial Coverage (%): {float(cov):.2f}\n")
+
+    H = run_data.get("homography")
+    H_arr = np.asarray(H, dtype=np.float64) if H is not None else None
+    if H_arr is not None and H_arr.size == 9:
+        H_str = " ".join([f"{v:.6e}" for v in H_arr.flatten()])
+        output.write(f"# Homography Matrix (3x3 row-major): {H_str}\n")
+
+    writer.writerow([
+        "point_id",
+        "source_x",
+        "source_y",
+        "reference_x",
+        "reference_y",
+        "is_inlier",
+        "residual_px",
+    ])
+
+    tiepoints = run_data.get("tiepoints", {})
+    moving_pts = tiepoints.get("moving", [])
+    fixed_pts = tiepoints.get("fixed", []) or tiepoints.get("ref", [])
+    inlier_mask = tiepoints.get("inlier_mask", [])
+
+    num_pts = min(len(moving_pts), len(fixed_pts)) if fixed_pts else len(moving_pts)
+    for i in range(num_pts):
+        mx, my = moving_pts[i]
+        fx, fy = fixed_pts[i] if i < len(fixed_pts) else (mx, my)
+        inl = bool(inlier_mask[i]) if i < len(inlier_mask) else True
+        res_px = ""
+        if H_arr is not None and H_arr.shape == (3, 3):
+            pt_src = np.array([mx, my, 1.0], dtype=np.float64)
+            pt_proj = H_arr @ pt_src
+            if abs(pt_proj[2]) > 1e-9:
+                px = pt_proj[0] / pt_proj[2]
+                py = pt_proj[1] / pt_proj[2]
+                res_px = f"{float(np.hypot(px - fx, py - fy)):.4f}"
+
+        writer.writerow([
+            i + 1,
+            f"{float(mx):.2f}",
+            f"{float(my):.2f}",
+            f"{float(fx):.2f}",
+            f"{float(fy):.2f}",
+            1 if inl else 0,
+            res_px,
+        ])
+
+    return output.getvalue()
+
+
+def generate_xml_export(run_data: dict[str, Any]) -> str:
+    """Generate clean, standard XML export for scientific archiving and GIS ingest."""
+    instrument = (
+        run_data.get("instrument")
+        or run_data.get("dataset_provenance", {}).get("instrument", "TMC-2")
+    )
+    ch2_prod = (
+        run_data.get("ch2_product_id")
+        or run_data.get("dataset_provenance", {}).get("ch2_product_id", "Unknown")
+    )
+    lroc_ref = (
+        run_data.get("lroc_filename")
+        or run_data.get("dataset_provenance", {}).get("lroc_reference", "Unknown")
+    )
+    inliers = int(
+        run_data.get("inlier_matches")
+        or run_data.get("registration_metrics", {}).get("inlier_matches", 0)
+    )
+    total = int(
+        run_data.get("total_matches")
+        or run_data.get("registration_metrics", {}).get("total_matches", 0)
+    )
+    inlier_ratio = float(
+        run_data.get("inlier_ratio")
+        or run_data.get("registration_metrics", {}).get("inlier_ratio", 0.0)
+    )
+    rmse = float(
+        run_data.get("rmse_pixels")
+        or run_data.get("registration_metrics", {}).get("reprojection_rmse_pixels", 0.0)
+    )
+    cov = float(
+        run_data.get("coverage")
+        or run_data.get("registration_metrics", {}).get("spatial_coverage_percent", 0.0)
+    )
+    runtime = float(
+        run_data.get("processing_time_seconds")
+        or run_data.get("registration_metrics", {}).get("runtime_seconds", 0.0)
+    )
+
+    root = ET.Element("chandramap_registration", version="1.0")
+
+    meta_el = ET.SubElement(root, "mission")
+    ET.SubElement(meta_el, "problem_statement").text = "SIH 2026 PS 26166"
+    ET.SubElement(meta_el, "organization").text = "ISRO / Department of Space"
+    ET.SubElement(meta_el, "export_timestamp_utc").text = time.strftime(
+        "%Y-%m-%d %H:%M:%S UTC", time.gmtime()
+    )
+
+    prov_el = ET.SubElement(root, "dataset_provenance")
+    ET.SubElement(prov_el, "instrument").text = str(instrument)
+    ET.SubElement(prov_el, "ch2_product_id").text = str(ch2_prod)
+    ET.SubElement(prov_el, "reference_product").text = str(lroc_ref)
+    ET.SubElement(prov_el, "source_timestamp").text = str(
+        run_data.get("source_timestamp", "2026-08-13 UTC")
+    )
+    ET.SubElement(prov_el, "reference_timestamp").text = str(
+        run_data.get("ref_timestamp", "2020-06-21 UTC")
+    )
+    ET.SubElement(prov_el, "footprint_iou").text = (
+        f"{float(run_data.get('footprint_iou', 0.0)):.4f}"
+    )
+
+    metrics_el = ET.SubElement(root, "registration_metrics")
+    ET.SubElement(metrics_el, "inlier_matches").text = str(inliers)
+    ET.SubElement(metrics_el, "total_matches").text = str(total)
+    ET.SubElement(metrics_el, "inlier_ratio").text = f"{inlier_ratio:.4f}"
+    ET.SubElement(metrics_el, "reprojection_rmse_pixels").text = f"{rmse:.4f}"
+    if run_data.get("rmse_meters") is not None:
+        ET.SubElement(metrics_el, "reprojection_rmse_meters").text = (
+            f"{float(run_data['rmse_meters']):.2f}"
+        )
+    ET.SubElement(metrics_el, "spatial_coverage_percent").text = f"{cov:.2f}"
+    ET.SubElement(metrics_el, "runtime_seconds").text = f"{runtime:.3f}"
+
+    H = run_data.get("homography")
+    if H is not None:
+        H_arr = np.asarray(H, dtype=np.float64)
+        if H_arr.shape == (3, 3):
+            h_el = ET.SubElement(
+                root, "transformation_matrix", model="homography", rows="3", cols="3"
+            )
+            for r in range(3):
+                ET.SubElement(h_el, f"row_{r}").text = " ".join(
+                    [f"{val:.8e}" for val in H_arr[r]]
+                )
+
+    decomp = run_data.get("decomposition", {})
+    if decomp:
+        geo_el = ET.SubElement(root, "geometric_decomposition")
+        for k, v in decomp.items():
+            ET.SubElement(geo_el, k).text = f"{float(v):.4f}"
+
+    tiepoints = run_data.get("tiepoints", {})
+    moving_pts = tiepoints.get("moving", [])
+    fixed_pts = tiepoints.get("fixed", []) or tiepoints.get("ref", [])
+    inlier_mask = tiepoints.get("inlier_mask", [])
+
+    num_pts = min(len(moving_pts), len(fixed_pts)) if fixed_pts else len(moving_pts)
+    tp_el = ET.SubElement(
+        root, "tiepoints", count=str(num_pts), inliers=str(inliers)
+    )
+    for i in range(num_pts):
+        mx, my = moving_pts[i]
+        fx, fy = fixed_pts[i] if i < len(fixed_pts) else (mx, my)
+        inl = bool(inlier_mask[i]) if i < len(inlier_mask) else True
+        pt_el = ET.SubElement(tp_el, "tiepoint", id=str(i + 1), inlier=str(inl).lower())
+        ET.SubElement(pt_el, "source", x=f"{float(mx):.2f}", y=f"{float(my):.2f}")
+        ET.SubElement(pt_el, "reference", x=f"{float(fx):.2f}", y=f"{float(fy):.2f}")
+
+    xml_str = ET.tostring(root, encoding="utf-8")
+    import xml.dom.minidom
+
+    dom = xml.dom.minidom.parseString(xml_str)
+    return dom.toprettyxml(indent="  ")
 
 
 def generate_pdf_report(

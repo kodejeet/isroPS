@@ -137,6 +137,35 @@ LROC_CATALOG: dict[str, dict[str, Any]] = {
         "data_quality": "0 (Controlled Ground Truth)",
         "sample_bits": 8,
     },
+    "M1225104036LC": {
+        "product_id": "M1225104036LC",
+        "edr_id": "LRO-L-LROC-2-EDR-V1.0/M1225104036LE",
+        "cdr_id": "LRO-L-LROC-3-CDR-V1.0/M1225104036LC",
+        "original_product": "nacl00181877",
+        "pds_dataset": "LRO-L-LROC-3-CDR-V1.0",
+        "mission_phase": "Second Extended Science Mission",
+        "rationale_desc": "Target of Opportunity (Zero-Overlap Verification)",
+        "orbit_number": 32099,
+        "acquisition_time": "2016-08-06 06:26:08.815 UTC",
+        "spacecraft_altitude_km": 115.40,
+        "resolution_m_px": 1.15,
+        "solar_incidence_deg": 62.40,
+        "emission_angle_deg": 3.10,
+        "phase_angle_deg": 61.80,
+        "sub_solar_azimuth_deg": 88.50,
+        "north_azimuth_deg": 270.00,
+        "center_latitude_deg": 24.50,
+        "center_longitude_deg": 310.20,
+        "detector_frame": "LEFT",
+        "line_exposure_duration_ms": 0.4827,
+        "temperature_scs_c": 18.24,
+        "temperature_fpa_c": 21.66,
+        "temperature_fpga_c": -5.11,
+        "temperature_telescope_c": 14.57,
+        "data_quality": "0 (Nominal)",
+        "sample_bits": 16,
+        "slew_angle_deg": 0.0,
+    },
 }
 
 
@@ -159,7 +188,7 @@ def get_lroc_metadata(lroc_filename: str, lroc_filepath: str) -> dict[str, Any]:
 
     catalog_entry = None
     for k, v in LROC_CATALOG.items():
-        if k in base_name:
+        if k.upper() in base_name.upper():
             catalog_entry = dict(v)
             break
 
@@ -257,6 +286,17 @@ def get_ch2_metadata(instrument: str, product_id: str) -> dict[str, Any]:
         meta["crop_bounds_lat_lon"] = ((-11.957, -11.873), (142.030, 142.124))
         meta["target_region"] = "Equatorial Mare Margin"
         meta["calibration_level"] = "Calibrated Science Grade (Level 1B / 2)"
+    elif instrument == "IIRS":
+        meta["orbit_number"] = 26865 if "26865" in product_id else 15194
+        meta["spacecraft_altitude_km"] = 99.8
+        meta["pixel_resolution_m_px"] = 93.74 if "26865" in product_id else 83.14
+        meta["solar_incidence_deg"] = 28.5 if "26865" in product_id else 72.8
+        meta["sun_elevation_deg"] = 61.5 if "26865" in product_id else 17.2
+        meta["sun_azimuth_deg"] = 85.0
+        meta["optical_band"] = "Infrared Imaging Spectrometer (0.8–5.0 µm, 256 bands)"
+        meta["projection"] = "Simple Cylindrical" if "26865" in product_id else "Polar Stereographic"
+        meta["target_region"] = "Mare Tranquillitatis" if "26865" in product_id else "Lunar South Pole"
+        meta["calibration_level"] = "ISRO Radiometric Calibrated Radiance (Level-2)"
     else:  # OHRC
         orbit = 28372
         acq_time = "2026-01-03 10:05:17 UTC"
@@ -276,13 +316,13 @@ def get_ch2_metadata(instrument: str, product_id: str) -> dict[str, Any]:
         meta["orbit_number"] = orbit
         meta["acquisition_time"] = acq_time
         meta["spacecraft_altitude_km"] = 100.31
-        meta["pixel_resolution_m_px"] = 0.25
+        meta["pixel_resolution_m_px"] = 5.0 if "5m" in product_id or "Benchmark" in product_id else 0.25
         meta["solar_incidence_deg"] = 84.48
         meta["sun_elevation_deg"] = 5.52
         meta["sun_azimuth_deg"] = 321.40
         meta["focal_length_mm"] = 4000.0
         meta["line_exposure_duration_ms"] = 15.80
-        meta["optical_band"] = "Ultra-High-Resolution Panchromatic (0.25 m/px)"
+        meta["optical_band"] = "Ultra-High-Resolution Panchromatic"
         meta["projection"] = "Polar Stereographic"
         meta["center_latitude_deg"] = -84.92
         meta["center_longitude_deg"] = 25.27
@@ -325,7 +365,7 @@ def get_combined_planetary_metadata(
             else "Grazing Multi-Season Shadow Variations (Phase Matching Applied)"
         ),
         "resolution_disparity_ratio": f"{res_ratio:.1f}x ({ch2_res:.2f} m/px vs {lroc_res:.2f} m/px)",
-        "scale_invariance_technique": "SIFT Multi-Scale Octaves + Sub-Pixel RANSAC Verification",
+        "scale_invariance_technique": "SIFT + RIFT2 Multi-Modal Fusion + Sub-Pixel Verification",
     }
 
     return {

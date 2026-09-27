@@ -30,8 +30,10 @@ from components.dataset_loader import (
 from components.metadata_service import get_combined_planetary_metadata
 from components.transform_service import (
     decompose_homography,
+    generate_csv_export,
     generate_json_export,
     generate_pdf_report,
+    generate_xml_export,
 )
 from lunar_correspondence.config import load_config
 from lunar_correspondence.geometry.homography import compute_reprojection_errors
@@ -39,7 +41,7 @@ from lunar_correspondence.pipeline import run_registration
 
 # Set Streamlit Page Configuration
 st.set_page_config(
-    page_title="Lunar Registration Dashboard — SIH PS 26166",
+    page_title="ChandraMap — SIH PS 26166",
     page_icon="🌕",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -49,6 +51,8 @@ st.set_page_config(
 st.markdown(
     """
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
   /* Global Background & Typography */
   .stApp {
     background-color: #05070B !important;
@@ -68,6 +72,33 @@ st.markdown(
   }
 
   /* Clean Top Bar */
+  .brand-center-container {
+    text-align: center;
+    padding: 4px 0 14px 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #1E2833;
+  }
+
+  .brand-title {
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-size: 34px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.6px !important;
+    color: #FFFFFF !important;
+    line-height: 1.15 !important;
+    margin: 0 0 6px 0 !important;
+    text-align: center !important;
+  }
+
+  .brand-subtitle {
+    font-size: 13.5px !important;
+    color: #8C9CAE !important;
+    font-weight: 500 !important;
+    margin: 0 !important;
+    text-align: center !important;
+    letter-spacing: 0.1px !important;
+  }
+
   .main-header {
     display: flex;
     justify-content: space-between;
@@ -78,19 +109,27 @@ st.markdown(
   }
 
   .main-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #E8EDF2;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+  }
+
+  .brand-name {
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.4px !important;
+    color: #FFFFFF !important;
+    line-height: 1.2 !important;
   }
 
   .main-subtitle {
     font-size: 13px;
-    color: #7A8794;
-    font-weight: 400;
-    margin-left: 8px;
+    color: #8C9CAE;
+    font-weight: 500;
+    margin-left: 2px;
+    border-left: 1px solid #23303E;
+    padding-left: 12px;
   }
 
   /* Warning Banners */
@@ -248,7 +287,13 @@ def main():
         st.session_state["select_ch2_prod"] = (
             "ch2_tmc_ncn_20260813T0627378557_d_img_d18"
         )
-        st.session_state["select_lroc_ref"] = "M1225104036LC.IMG"
+        avail_refs = [r["filename"] for r in get_available_lroc_references("TMC-2")]
+        if "M1225104036LC.IMG" in avail_refs:
+            st.session_state["select_lroc_ref"] = "M1225104036LC.IMG"
+        elif "lroc_m1225104036lc_tmc2_zero_overlap.tif" in avail_refs:
+            st.session_state["select_lroc_ref"] = "lroc_m1225104036lc_tmc2_zero_overlap.tif"
+        else:
+            st.session_state["select_lroc_ref"] = avail_refs[0] if avail_refs else ""
         st.session_state["trigger_auto_run"] = True
 
     # --- LEFT PERSISTENT PANEL (SIDEBAR) ---
@@ -259,7 +304,7 @@ def main():
         )
         instrument = st.radio(
             "Select Sensor",
-            options=["TMC-2", "OHRC"],
+            options=["TMC-2", "OHRC", "IIRS"],
             label_visibility="collapsed",
             key="radio_instrument",
         )
@@ -274,6 +319,8 @@ def main():
                 st.session_state["select_ch2_prod"] = (
                     ohrc_100517[0] if ohrc_100517 else (prods[0] if prods else "")
                 )
+            elif instrument == "IIRS":
+                st.session_state["select_ch2_prod"] = prods[0] if prods else ""
             else:
                 tmc_ncn = [p for p in prods if "ncn" in p]
                 st.session_state["select_ch2_prod"] = (
@@ -303,8 +350,9 @@ def main():
         )
 
         # LROC Reference Dropdown
+        ref_title = "LRO WAC Basemap" if instrument == "IIRS" else "LROC NAC Reference"
         st.markdown(
-            '<div class="sidebar-section-title">LROC NAC Reference</div>',
+            f'<div class="sidebar-section-title">{ref_title}</div>',
             unsafe_allow_html=True,
         )
         lroc_refs = get_available_lroc_references(instrument)
@@ -324,8 +372,27 @@ def main():
             key="select_lroc_ref",
         )
 
+        # Sensor Profile Dropdown
         st.markdown(
-            '<div class="sidebar-caption">Product and reference are selected manually from the local benchmark set.</div>',
+            '<div class="sidebar-section-title">Sensor Profile</div>',
+            unsafe_allow_html=True,
+        )
+        profile_options = [
+            "Auto-Detect (Recommended)",
+            "OHRC_SIH_5M",
+            "TMC2",
+            "IIRS_EQUATORIAL_WAC",
+            "IIRS_SOUTH_POLE_WAC",
+        ]
+        selected_profile = st.selectbox(
+            "Sensor Profile",
+            options=profile_options,
+            label_visibility="collapsed",
+            key="select_sensor_profile",
+        )
+
+        st.markdown(
+            '<div class="sidebar-caption">Sensor and basemap benchmark pairs from local archive.</div>',
             unsafe_allow_html=True,
         )
 
@@ -375,6 +442,23 @@ def main():
             )
             config = load_config(cfg_path)
 
+            if selected_profile != "Auto-Detect (Recommended)":
+                config["profile"] = selected_profile
+            else:
+                if instrument == "IIRS":
+                    config["profile"] = (
+                        "IIRS_SOUTH_POLE_WAC"
+                        if "15194" in selected_ch2_product or "South" in selected_ch2_product
+                        else "IIRS_EQUATORIAL_WAC"
+                    )
+                elif instrument == "OHRC":
+                    config["profile"] = "OHRC_SIH_5M"
+                else:
+                    config["profile"] = "TMC2"
+
+            if "ref_resolution_m_px" in pair_meta:
+                config["reference_gsd_m"] = pair_meta["ref_resolution_m_px"]
+
             t0 = time.time()
             try:
                 reg_result, eval_result = run_registration(
@@ -388,6 +472,7 @@ def main():
             elapsed = time.time() - t0
 
             # Compute tiepoints and residuals
+            rmse_meters = None
             if (
                 reg_result is not None
                 and reg_result.geometric_model is not None
@@ -430,6 +515,11 @@ def main():
                     if eval_result.rmse_pixels is not None
                     else 0.0
                 )
+                rmse_meters = (
+                    float(eval_result.rmse_meters)
+                    if eval_result.rmse_meters is not None
+                    else None
+                )
                 coverage = (
                     float(eval_result.coverage)
                     if eval_result.coverage is not None
@@ -449,6 +539,7 @@ def main():
                 total_matches = 0
                 inlier_ratio = 0.0
                 rmse_px = 0.0
+                rmse_meters = None
                 coverage = 0.0
 
             planetary_meta = get_combined_planetary_metadata(
@@ -475,6 +566,7 @@ def main():
                 "total_matches": total_matches,
                 "inlier_ratio": inlier_ratio,
                 "rmse_pixels": rmse_px,
+                "rmse_meters": rmse_meters,
                 "coverage": coverage,
                 "processing_time_seconds": elapsed,
                 "footprint_iou": pair_meta["footprint_iou"],
@@ -482,48 +574,61 @@ def main():
                 "source_timestamp": pair_meta["source_timestamp"],
                 "ref_timestamp": pair_meta["ref_timestamp"],
                 "planetary_metadata": planetary_meta,
+                "is_night_pass": pair_meta.get("is_night_pass", False),
+                "quality_flags": pair_meta.get("quality_flags", []),
+                "selected_profile": config.get("profile", "Auto"),
+                "is_float_radiance": np.issubdtype(src_data.array.dtype, np.floating),
             }
 
     # Retrieve current run data
     run = st.session_state["last_run"]
 
-    # --- TOP HEADER & EXPORT BUTTONS ---
-    col_hdr, col_pdf, col_json = st.columns([3.2, 0.9, 0.9])
-    with col_hdr:
-        st.markdown(
-            f"""
-        <div class="main-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
-          <div class="main-title">
-            <span>🌕 Lunar Registration Dashboard</span>
-            <span class="main-subtitle">SIH PS 26166 • CH-2 {run['instrument']} &rarr; LROC NAC</span>
-          </div>
+    # --- TOP HEADER: CENTERED BRAND TITLE ---
+    ref_header_name = "LRO WAC" if run['instrument'] == "IIRS" else "LROC NAC"
+    st.markdown(
+        f"""
+        <div class="brand-center-container">
+          <div class="brand-title">ChandraMap</div>
+          <div class="brand-subtitle">SIH PS 26166 &bull; Multi-Modal Lunar Image Correspondence Engine &bull; CH-2 {run['instrument']} &rarr; {ref_header_name}</div>
         </div>
         """,
-            unsafe_allow_html=True,
-        )
+        unsafe_allow_html=True,
+    )
 
     # Export PDF Report
+    diff_arr = np.abs(
+        run["registered_image"].astype(float)
+        - run["reference_image"].astype(float)
+    )
+    diff_max = np.max(diff_arr) if diff_arr.size > 0 else 1.0
+    if diff_max > 255.0:
+        diff_uint8 = (diff_arr / max(1e-6, diff_max) * 255.0).astype(np.uint8)
+    else:
+        diff_uint8 = np.clip(diff_arr, 0, 255).astype(np.uint8)
+
     pdf_bytes = generate_pdf_report(
         run_data=run,
         images={
             "moving": run["source_image"],
             "reference": run["reference_image"],
             "registered": run["registered_image"],
-            "difference": np.abs(
-                run["registered_image"].astype(float)
-                - run["reference_image"].astype(float)
-            ).astype(np.uint8),
+            "difference": diff_uint8,
         },
     )
 
-    # Export JSON
+    # Export Serializers (JSON, CSV, XML)
     json_str = generate_json_export(run)
+    csv_str = generate_csv_export(run)
+    xml_str = generate_xml_export(run)
+
+    # --- EXPORT BUTTONS ROW ---
+    col_pdf, col_json, col_csv, col_xml = st.columns(4)
 
     with col_pdf:
         st.download_button(
             label="📄 Export PDF report",
             data=pdf_bytes,
-            file_name=f"lunar_registration_{run['instrument'].lower()}_{int(time.time())}.pdf",
+            file_name=f"chandramap_{run['instrument'].lower()}_{int(time.time())}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
@@ -532,8 +637,26 @@ def main():
         st.download_button(
             label="💾 Export JSON",
             data=json_str,
-            file_name=f"lunar_registration_{run['instrument'].lower()}_{int(time.time())}.json",
+            file_name=f"chandramap_{run['instrument'].lower()}_{int(time.time())}.json",
             mime="application/json",
+            use_container_width=True,
+        )
+
+    with col_csv:
+        st.download_button(
+            label="📊 Export CSV",
+            data=csv_str,
+            file_name=f"chandramap_{run['instrument'].lower()}_{int(time.time())}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    with col_xml:
+        st.download_button(
+            label="📑 Export XML",
+            data=xml_str,
+            file_name=f"chandramap_{run['instrument'].lower()}_{int(time.time())}.xml",
+            mime="application/xml",
             use_container_width=True,
         )
 
@@ -548,6 +671,12 @@ def main():
     inlier_rat = run["inlier_ratio"]
 
     warning_banners = []
+    # Check Night Pass Quality Gate
+    if run.get("is_night_pass") or "INSUFFICIENT_ILLUMINATION" in run.get("quality_flags", []):
+        warning_banners.append(
+            '<div class="warning-box warning-red">⛔ INSUFFICIENT ILLUMINATION DETECTED — Sun elevation < 0° (Night pass orbit). Quality gate rejected this pair from scientific registration.</div>'
+        )
+
     # Check Footprint IoU
     if iou < 0.05:
         warning_banners.append(
@@ -571,19 +700,22 @@ def main():
         )
 
     # --- PRIMARY VISUAL: SWIPE COMPARISON & VIEW TABS ---
+    ref_display_name = f"LRO WAC ({run['lroc_filename']})" if run['instrument'] == "IIRS" else f"LROC NAC ({run['lroc_filename']})"
     compositor_html = build_compositor_html(
         moving_arr=run["source_image"],
         reference_arr=run["reference_image"],
         registered_arr=run["registered_image"],
         tiepoints=run["tiepoints"],
         instrument_label=f"CH-2 {run['instrument']}",
-        reference_label=f"LROC NAC ({run['lroc_filename']})",
+        reference_label=ref_display_name,
         canvas_size=560,
     )
 
     st.components.v1.html(compositor_html, height=665)
 
     # --- EVIDENCE STRIP (HERO NUMBERS) ---
+    rmse_meters_val = run.get("rmse_meters")
+    rmse_meters_label = f"RMSE ({rmse_meters_val:.1f}m)" if rmse_meters_val is not None else "Reprojection RMSE"
     st.markdown(
         f"""
     <div class="hero-strip">
@@ -597,7 +729,7 @@ def main():
       </div>
       <div class="hero-card">
         <div class="hero-num">{run['rmse_pixels']:.3f} <span style="font-size:16px; font-weight:400; color:#7A8794;">px</span></div>
-        <div class="hero-title">Reprojection RMSE</div>
+        <div class="hero-title">{rmse_meters_label}</div>
       </div>
       <div class="hero-card">
         <div class="hero-num">{run['coverage']:.1f}%</div>
@@ -645,7 +777,7 @@ def main():
         <div class="details-grid">
           <!-- Card 1: Orbit & Spacecraft Dynamics -->
           <div class="details-col">
-            <h4>🛰 Orbit & Spacecraft Dynamics</h4>
+            <h4>Orbit & Spacecraft Dynamics</h4>
             <div class="details-row">
               <span class="details-label">CH-2 Platform & Orbit</span>
               <span class="details-val">Chandrayaan-2 (Orbit #{ch2_m.get('orbit_number', 31073)})</span>
@@ -674,7 +806,7 @@ def main():
 
           <!-- Card 2: Solar & Illumination Geometry -->
           <div class="details-col">
-            <h4>☀️ Solar & Illumination Geometry</h4>
+            <h4>Solar & Illumination Geometry</h4>
             <div class="details-row">
               <span class="details-label">Solar Incidence (&theta;<sub>inc</sub>)</span>
               <span class="details-val">CH-2: {_sf(ch2_m.get('solar_incidence_deg'), 39.06):.2f}&deg; | LRO: {_sf(lroc_m.get('solar_incidence_deg'), 36.94):.2f}&deg;</span>
@@ -703,7 +835,7 @@ def main():
 
           <!-- Card 3: Sensor Optics & Radiometry -->
           <div class="details-col">
-            <h4>🔬 Sensor Optics & Radiometry</h4>
+            <h4>Sensor Optics & Radiometry</h4>
             <div class="details-row">
               <span class="details-label">Ground Sampling (GSD)</span>
               <span class="details-val">CH-2: {_sf(ch2_m.get('pixel_resolution_m_px'), 5.48):.2f} m/px | LRO: {_sf(lroc_m.get('resolution_m_px'), 0.93):.2f} m/px</span>
@@ -732,7 +864,7 @@ def main():
 
           <!-- Card 4: Geographic Footprint & Bounds -->
           <div class="details-col">
-            <h4>📍 Geographic Footprint & Bounds</h4>
+            <h4>Geographic Footprint & Bounds</h4>
             <div class="details-row">
               <span class="details-label">Cartographic Projection</span>
               <span class="details-val">{ch2_m.get('projection', 'Selenographic')}</span>
@@ -761,7 +893,7 @@ def main():
 
           <!-- Card 5: Geometric Homography Decomposition -->
           <div class="details-col">
-            <h4>📐 Geometric Homography Decomposition</h4>
+            <h4>Geometric Homography Decomposition</h4>
             <div class="details-row">
               <span class="details-label">Translation Shift</span>
               <span class="details-val">&Delta;X = {decomp['shift_x']:+.2f} px, &Delta;Y = {decomp['shift_y']:+.2f} px (Total {decomp['shift_total']:.2f} px)</span>
@@ -784,7 +916,36 @@ def main():
             </div>
             <div class="details-row">
               <span class="details-label">Sub-Pixel Verification</span>
-              <span class="details-val">RMSE = {run['rmse_pixels']:.3f} px (Sub-pixel verified)</span>
+              <span class="details-val">RMSE = {run['rmse_pixels']:.3f} px ({f"{run.get('rmse_meters', 0.0):.1f} m" if run.get('rmse_meters') is not None else "pixels"})</span>
+            </div>
+          </div>
+
+          <!-- Card 6: Sensor Profile & Physical Diagnostics -->
+          <div class="details-col">
+            <h4>Sensor Profile & Radiometry</h4>
+            <div class="details-row">
+              <span class="details-label">Active Profile</span>
+              <span class="details-val">{run.get('selected_profile', 'Auto-Detected')}</span>
+            </div>
+            <div class="details-row">
+              <span class="details-label">Physical Radiometry</span>
+              <span class="details-val">{"Preserved Float32 Radiance" if run.get('is_float_radiance') else "Calibrated Reflectance (DN)"}</span>
+            </div>
+            <div class="details-row">
+              <span class="details-label">Reference GSD</span>
+              <span class="details-val">{f"{run.get('rmse_meters') / max(1e-4, run.get('rmse_pixels')):.1f} m/px" if (run.get('rmse_meters') and run.get('rmse_pixels')) else "Standard Grid"}</span>
+            </div>
+            <div class="details-row">
+              <span class="details-label">Ground Error (RMSE)</span>
+              <span class="details-val">{f"{run.get('rmse_meters'):.2f} meters" if run.get('rmse_meters') is not None else "N/A"}</span>
+            </div>
+            <div class="details-row">
+              <span class="details-label">Quality Gate Screening</span>
+              <span class="details-val">{"REJECTED: INSUFFICIENT_ILLUMINATION" if run.get('is_night_pass') else "PASS (Nominal Illumination)"}</span>
+            </div>
+            <div class="details-row">
+              <span class="details-label">Pushbroom Along-Track Model</span>
+              <span class="details-val">Piecewise Block-Affine with Overlap Blending</span>
             </div>
           </div>
         </div>
